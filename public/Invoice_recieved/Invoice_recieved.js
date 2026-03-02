@@ -1,6 +1,34 @@
 
 // Invoice_recieved.js - Sistema de facturas recibidas - COM FIREBASE E IVA
 
+// ========== GLOBAL FUNCTIONS ==========
+// Função de logout - disponível globalmente
+window.confirmLogout = function() {
+  if (confirm('¿Cerrar sesión?')) {
+    // 1. Limpar localStorage primeiro
+    localStorage.removeItem('upsen_current_user');
+    
+    // 2. Also try to sign out from Firebase
+    if (window.firebaseAuth) {
+      window.firebaseAuth.signOut().then(function() {
+        console.log('Firebase signed out');
+      }).catch(function(e) {
+        console.log('Firebase sign out error:', e);
+      });
+    }
+    
+    // 3. Also try AuthService logout
+    var auth = window.AuthService || window.Auth;
+    if (auth && auth.logout) {
+      auth.logout().then(function() {
+        window.location.href = '../login.html';
+      });
+    } else {
+      window.location.href = '../login.html';
+    }
+  }
+};
+
 function $(id) {
   return document.getElementById(id);
 }
@@ -414,8 +442,13 @@ window.viewInvoice = function(id) {
       '<div class="text-muted mt-3 text-end"><small>Creado: ' + new Date(invoice.createdAt || '').toLocaleString() + '</small></div>';
   }
 
-  if (window.viewInvoiceModal) {
-    window.viewInvoiceModal.show();
+  var modalEl = document.getElementById('viewInvoiceModal');
+  if (modalEl) {
+    var modal = bootstrap.Modal.getInstance(modalEl);
+    if (!modal) {
+      modal = new bootstrap.Modal(modalEl);
+    }
+    modal.show();
   }
 };
 

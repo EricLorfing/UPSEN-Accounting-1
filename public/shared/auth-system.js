@@ -1036,29 +1036,92 @@ loginWithGoogle: function() {
       document.body.style.color = '#ffffff';
       
       var cards = document.querySelectorAll('.modern-card, .stat-card, .summary-card');
-      cards.forEach(function(card) {
-        card.style.backgroundColor = '#16213e';
-        card.style.color = '#ffffff';
-      });
+      if (cards && cards.length > 0) {
+        cards.forEach(function(card) {
+          if (card) {
+            card.style.backgroundColor = '#16213e';
+            card.style.color = '#ffffff';
+          }
+        });
+      }
       
       var texts = document.querySelectorAll('.section-title, .page-title, .form-label, .info-label, .info-value, .stat-value, .stat-label');
-      texts.forEach(function(t) {
-        t.style.color = '#ffffff';
-      });
+      if (texts && texts.length > 0) {
+        texts.forEach(function(t) {
+          if (t) {
+            t.style.color = '#ffffff';
+          }
+        });
+      }
+      
+      // Apply dark theme to forms
+      var inputs = document.querySelectorAll('input, select, textarea');
+      if (inputs && inputs.length > 0) {
+        inputs.forEach(function(input) {
+          if (input) {
+            input.style.backgroundColor = '#16213e';
+            input.style.color = '#ffffff';
+            input.style.borderColor = '#2c3e50';
+          }
+        });
+      }
+      
+      // Apply dark theme to tables
+      var tables = document.querySelectorAll('table, th, td');
+      if (tables && tables.length > 0) {
+        tables.forEach(function(table) {
+          if (table) {
+            table.style.backgroundColor = '#16213e';
+            table.style.color = '#ffffff';
+          }
+        });
+      }
+      
     } else {
       document.body.style.backgroundColor = '#eef1f7';
       document.body.style.color = '#2c3e50';
       
       var cards = document.querySelectorAll('.modern-card, .stat-card, .summary-card');
-      cards.forEach(function(card) {
-        card.style.backgroundColor = '';
-        card.style.color = '';
-      });
+      if (cards && cards.length > 0) {
+        cards.forEach(function(card) {
+          if (card) {
+            card.style.backgroundColor = '';
+            card.style.color = '';
+          }
+        });
+      }
       
       var texts = document.querySelectorAll('.section-title, .page-title, .form-label, .info-label, .info-value, .stat-value, .stat-label');
-      texts.forEach(function(t) {
-        t.style.color = '';
-      });
+      if (texts && texts.length > 0) {
+        texts.forEach(function(t) {
+          if (t) {
+            t.style.color = '';
+          }
+        });
+      }
+      
+      // Reset form styles
+      var inputs = document.querySelectorAll('input, select, textarea');
+      if (inputs && inputs.length > 0) {
+        inputs.forEach(function(input) {
+          if (input) {
+            input.style.backgroundColor = '';
+            input.style.color = '';
+            input.style.borderColor = '';
+          }
+        });
+      }
+      
+      // Reset table styles
+      var tables = document.querySelectorAll('table, th, td');
+      if (tables && tables.length > 0) {
+        tables.forEach(function(table) {
+          if (table) {
+            table.style.backgroundColor = '';
+            table.style.color = '';
+          }
+        });
+      }
     }
   }
   

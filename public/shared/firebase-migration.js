@@ -3,13 +3,13 @@
  * UPSEN Accounting
  * 
  * Use esta ferramenta para migrar dados do localStorage para o Firebase
- * Execute no console do navegador após fazer login
+ * Execute no console do navegador apos fazer login
  */
 
 (function() {
   'use strict';
   
-  // Verificar se Firebase está disponível
+  // Verificar se Firebase esta disponivel
   function isFirebaseReady() {
     return window.firebaseDb && window.firebaseAuth && window.firebaseAuth.currentUser;
   }
@@ -26,14 +26,14 @@
     var keys = [];
     for (var i = 0; i < localStorage.length; i++) {
       var key = localStorage.key(i);
-      if (key && key.startsWith('upsen_')) {
+      if (key && key.indexOf('upsen_') === 0) {
         keys.push(key);
       }
     }
     return keys;
   }
   
-  // Obter dados de uma chave específica
+  // Obter dados de uma chave especifica
   function getDataFromLocalStorage(key) {
     try {
       var data = localStorage.getItem(key);
@@ -45,48 +45,80 @@
   }
   
   // Migrar dados para o Firebase
-  async function migrateToFirebase(collectionName, data) {
-    if (!isFirebaseReady()) {
-      console.error('Firebase não está pronto');
-      return { success: false, error: 'Firebase not ready' };
-    }
-    
-    var userId = getUserId();
-    if (!userId) {
-      console.error('Utilizador não autenticado');
-      return { success: false, error: 'User not authenticated' };
-    }
-    
-    var migratedCount = 0;
-    var errors = [];
-    
-    for (var i = 0; i < data.length; i++) {
-      var item = data[i];
-      try {
-        await window.firebaseDb
+  function migrateToFirebase(collectionName, data) {
+    return new Promise(function(resolve) {
+      if (!isFirebaseReady()) {
+        console.error('Firebase nao esta pronto');
+        resolve({ success: false, error: 'Firebase not ready' });
+        return;
+      }
+      
+      var userId = getUserId();
+      if (!userId) {
+        console.error('Utilizador nao autenticado');
+        resolve({ success: false, error: 'User not authenticated' });
+        return;
+      }
+      
+      var migratedCount = 0;
+      var errors = [];
+      var promises = [];
+      
+      for (var i = 0; i < data.length; i++) {
+        var item = data[i];
+        var promise = window.firebaseDb
           .collection('companies')
           .doc(userId)
           .collection(collectionName)
           .add({
-            ...item,
+            id: item.id || item.invoiceNumber || 'item-' + i,
+            date: item.date || '',
+            category: item.category || '',
+            amount: parseFloat(item.amount) || 0,
+            ivaRate: parseFloat(item.ivaRate) || 0,
+            ivaAmount: parseFloat(item.ivaAmount) || 0,
+            totalAmount: parseFloat(item.totalAmount) || 0,
+            notes: item.notes || '',
+            paymentMethod: item.paymentMethod || '',
+            supplierNif: item.supplierNif || '',
+            supplierName: item.supplierName || '',
+            customer: item.customer || '',
+            customerNif: item.customerNif || '',
+            invoiceNumber: item.invoiceNumber || '',
+            invoiceDate: item.invoiceDate || '',
+            dueDate: item.dueDate || '',
+            state: item.state || 'Pendiente',
+            description: item.description || '',
+            supplier: item.supplier || '',
+            number: item.number || '',
+            series: item.series || '',
+            total: parseFloat(item.total) || 0,
+            status: item.status || 'pending',
             migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
             originalCreatedAt: item.createdAt || new Date().toISOString()
+          })
+          .then(function() {
+            migratedCount++;
+          })
+          .catch(function(e) {
+            errors.push({ item: item.id || i, error: e.message });
           });
-        migratedCount++;
-      } catch (e) {
-        errors.push({ item: item.id || i, error: e.message });
+        
+        promises.push(promise);
       }
-    }
-    
-    return { 
-      success: true, 
-      migrated: migratedCount, 
-      total: data.length,
-      errors: errors 
-    };
+      
+      Promise.all(promises).then(function() {
+        resolve({ 
+          success: true, 
+          migrated: migratedCount, 
+          total: data.length,
+          errors: errors 
+        });
+      });
+    });
   }
   
-  // Mapear chaves localStorage para coleções Firebase
+  // Mapear chaves localStorage para colecoes Firebase
   function getCollectionMapping() {
     var userId = getUserId() || '';
     return {
@@ -101,15 +133,15 @@
     };
   }
   
-  // Executar migração completa
-  async function runFullMigration() {
+  // Executar migracao completa
+  function runFullMigration() {
     if (!isFirebaseReady()) {
-      console.error('❌ Firebase não está pronto. Faça login primeiro.');
-      return;
+      console.error('Firebase nao esta pronto. Faca login primeiro.');
+      return Promise.resolve();
     }
     
     var userId = getUserId();
-    console.log('🚀 Iniciando migração para utilizador:', userId);
+    console.log('Iniciando migracao para utilizador:', userId);
     
     var mapping = {
       'expenses': 'upsen_expenses' + (userId ? '_' + userId : ''),
@@ -119,86 +151,99 @@
     };
     
     var results = {};
+    var collections = Object.keys(mapping);
     
-    for (var [collection, key] of Object.entries(mapping)) {
-      console.log(`\n📦 Verificando ${collection}...`);
+    function processNext(index) {
+      if (index >= collections.length) {
+        console.log('\nRESUMO DA MIGRACAO:');
+        console.log(JSON.stringify(results, null, 2));
+        return;
+      }
+      
+      var collection = collections[index];
+      var key = mapping[collection];
+      
+      console.log('\nVerificando ' + collection + '...');
       var data = getDataFromLocalStorage(key);
       
       if (data && data.length > 0) {
-        console.log(`   Encontrados ${data.length} itens no localStorage`);
+        console.log('   Encontrados ' + data.length + ' itens no localStorage');
         console.log('   A migrar para Firebase...');
         
-        var result = await migrateToFirebase(collection, data);
-        results[collection] = result;
-        
-        if (result.success) {
-          console.log(`   ✅ ${result.migrated} de ${result.total} itens migrados`);
-        } else {
-          console.log(`   ❌ Erro: ${result.error}`);
-        }
+        migrateToFirebase(collection, data).then(function(result) {
+          results[collection] = result;
+          
+          if (result.success) {
+            console.log('   OK: ' + result.migrated + ' de ' + result.total + ' itens migrados');
+          } else {
+            console.log('   Erro: ' + result.error);
+          }
+          
+          processNext(index + 1);
+        });
       } else {
-        console.log(`   ℹ️ Nenhum dado encontrado no localStorage`);
+        console.log('   Nenhum dado encontrado no localStorage');
         
         // Verificar no Firebase
-        try {
-          var firebaseData = await window.firebaseDb
-            .collection('companies')
-            .doc(userId)
-            .collection(collection)
-            .get();
-          
-          console.log(`   📊 ${firebaseData.size} itens no Firebase`);
-        } catch (e) {
-          console.log(`   ❌ Erro ao verificar Firebase: ${e.message}`);
-        }
+        window.firebaseDb
+          .collection('companies')
+          .doc(userId)
+          .collection(collection)
+          .get()
+          .then(function(firebaseData) {
+            console.log('   ' + firebaseData.size + ' itens no Firebase');
+          })
+          .catch(function(e) {
+            console.log('   Erro ao verificar Firebase: ' + e.message);
+          })
+          .finally(function() {
+            processNext(index + 1);
+          });
       }
     }
     
-    console.log('\n📊 RESUMO DA MIGRAÇÃO:');
-    console.log(JSON.stringify(results, null, 2));
-    
-    return results;
+    processNext(0);
   }
   
-  // Mostrar dados actuais
+  // Mostrar dados atuais
   function showCurrentData() {
     if (!isFirebaseReady()) {
-      console.error('Firebase não está pronto');
+      console.error('Firebase nao esta pronto');
       return;
     }
     
     var userId = getUserId();
-    console.log('📊 Dados actuais para utilizador:', userId);
+    console.log('Dados atuais para utilizador:', userId);
     
     var collections = ['expenses', 'invoicesIssued', 'invoicesReceived', 'budgets'];
     
-    collections.forEach(async function(collection) {
-      try {
-        var snapshot = await window.firebaseDb
-          .collection('companies')
-          .doc(userId)
-          .collection(collection)
-          .get();
-        
-        console.log(`\n📁 ${collection}: ${snapshot.size} documentos`);
-        
-        if (snapshot.size > 0) {
-          snapshot.forEach(function(doc) {
-            var data = doc.data();
-            console.log(`   - ${doc.id}:`, JSON.stringify(data));
-          });
-        }
-      } catch (e) {
-        console.log(`❌ Erro ao obter ${collection}:`, e.message);
-      }
+    collections.forEach(function(collection) {
+      window.firebaseDb
+        .collection('companies')
+        .doc(userId)
+        .collection(collection)
+        .get()
+        .then(function(snapshot) {
+          console.log('\n' + collection + ': ' + snapshot.size + ' documentos');
+          
+          if (snapshot.size > 0) {
+            snapshot.forEach(function(doc) {
+              var data = doc.data();
+              console.log('   - ' + doc.id + ':', JSON.stringify(data));
+            });
+          }
+        })
+        .catch(function(e) {
+          console.log('Erro ao obter ' + collection + ':', e.message);
+        });
     });
     
-    // Também mostrar localStorage
-    console.log('\n💾 Dados no localStorage:');
+    // Tambem mostrar localStorage
+    console.log('\nDados no localStorage:');
     var keys = getLocalStorageKeys();
     keys.forEach(function(key) {
       var data = getDataFromLocalStorage(key);
-      console.log(`   ${key}: ${data.length} itens`);
+      console.log('   ' + key + ': ' + data.length + ' itens');
     });
   }
   
@@ -211,10 +256,10 @@
     getLocalStorageKeys: getLocalStorageKeys
   };
   
-  console.log('✅ Firebase Migration Utility carregada!');
-  console.log('📋 Comandos disponíveis:');
-  console.log('   FirebaseMigration.showCurrentData() - Ver dados actuais');
-  console.log('   FirebaseMigration.runFullMigration() - Executar migração');
+  console.log('Firebase Migration Utility carregada!');
+  console.log('Comandos disponiveis:');
+  console.log('   FirebaseMigration.showCurrentData() - Ver dados atuais');
+  console.log('   FirebaseMigration.runFullMigration() - Executar migracao');
   
 })();
 

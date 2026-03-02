@@ -1,359 +1,319 @@
 /**
  * Firebase Sync Service - UPSEN Accounting
- * Sincroniza dados entre Firebase Firestore e localStorage
- * Firebase é a fonte primária, localStorage é backup local
  */
 
 (function() {
   'use strict';
 
-  // Verificar se Firebase está disponível
   function isFirebaseReady() {
-    return window.firebaseDb && window.firebaseAuth && window.firebaseAuth.currentUser;
+    // Check if Firebase SDK is loaded
+    if (typeof firebase === 'undefined') {
+      console.log('[Sync] Firebase SDK not loaded');
+      return false;
+    }
+    
+    // Check if Firebase is initialized
+    if (!window.firebaseDb) {
+      console.log('[Sync] Firebase DB not initialized');
+      return false;
+    }
+    
+    // Check if Auth is ready (user can be null but auth should be initialized)
+    if (!window.firebaseAuth) {
+      console.log('[Sync] Firebase Auth not initialized');
+      return false;
+    }
+    
+    // Auth is ready, user may or may not be logged in
+    return true;
   }
 
   function getUserId() {
+    // First try Firebase Auth
     if (window.firebaseAuth && window.firebaseAuth.currentUser) {
       return window.firebaseAuth.currentUser.uid;
     }
+    
+    // Fallback: try to get from localStorage session
+    try {
+      var session = localStorage.getItem('upsen_current_user');
+      if (session) {
+        var data = JSON.parse(session);
+        if (data && data.user && data.user.uid) {
+          return data.user.uid;
+        }
+      }
+    } catch (e) {}
+    
     return null;
   }
 
-  // ========== COLEÇÕES DO FIREBASE ==========
-  const COLLECTIONS = {
+  var COLLECTIONS = {
     expenses: 'expenses',
     invoicesIssued: 'invoicesIssued',
     invoicesReceived: 'invoicesReceived',
     budgets: 'budgets'
   };
 
-  // ========== SYNC: FIREBASE → LOCALSTORAGE ==========
-  /**
-   * Carrega todos os dados de uma coleção do Firebase para o localStorage
-   * Suporta múltiplas estruturas de dados:
-   * - companies/{uid}/{collection} (estrutura correta)
-   * - users/{uid}/{uid}/documents/{collection}/items (estrutura legado)
-   * 
-   * Se encontrar dados na estrutura legacy, copia automaticamente para a nova estrutura
-   */
-  async function syncCollectionToLocalStorage(collectionName) {
-    if (!isFirebaseReady()) {
-      console.log(`[Sync] Firebase não pronto para ${collectionName}`);
-      return null;
-    }
+  function syncCollectionToLocalStorage(collectionName) {
+    return new Promise(function(resolve) {
+      var userId = getUserId();
+      
+      // Try to get from localStorage first (faster)
+      var baseKey = 'upsen_' + collectionName.toLowerCase();
+      var userKey = userId ? baseKey + '_' + userId : baseKey;
+      var localData = localStorage.getItem(userKey);
+      
+      // If we have local data and Firebase is not ready, return local data
+      if (!isFirebaseReady()) {
+        if (localData) {
+          try {
+            var parsedData = JSON.parse(localData);
+            console.log('[Sync] Firebase nao pronto, usando dados locais para ' + collectionName + ': ' + parsedData.length);
+            resolve(parsedData);
+            return;
+          } catch (e) {}
+        }
+        console.log('[Sync] Firebase nao pronto para ' + collectionName);
+        resolve(null);
+        return;
+      }
 
-    const userId = getUserId();
-    if (!userId) {
-      console.log(`[Sync] Utilizador não autenticado`);
-      return null;
-    }
+      if (!userId) {
+        console.log('[Sync] Utilizador nao autenticado, usando dados locais');
+        if (localData) {
+          try {
+            var parsedData = JSON.parse(localData);
+            resolve(parsedData);
+            return;
+          } catch (e) {}
+        }
+        resolve(null);
+        return;
+      }
 
-    let data = [];
-    let sourceFound = '';
-    let needsMigration = false;
+      console.log('[Sync] Lendo companies/' + userId + '/' + collectionName);
 
-    try {
-      // Tentar primeira estrutura: companies/{uid}/{collection}
-      console.log(`[Sync] A tentar companies/{uid}/${collectionName}...`);
-      const snapshot1 = await window.firebaseDb
+      window.firebaseDb
         .collection('companies')
         .doc(userId)
         .collection(collectionName)
-        .get();
-
-      snapshot1.forEach(doc => {
-        if (doc.id === '_init') return;
-        const docData = doc.data();
-        if (docData.createdAt && docData.createdAt.toDate) {
-          docData.createdAt = docData.createdAt.toDate().toISOString();
-        }
-        if (docData.updatedAt && docData.updatedAt.toDate) {
-          docData.updatedAt = docData.updatedAt.toDate().toISOString();
-        }
-        data.push({ id: doc.id, ...docData });
-        console.log(`[Sync] Documento encontrado em companies:`, doc.id);
-      });
-
-      if (data.length > 0) {
-        sourceFound = 'companies';
-      }
-    } catch (error) {
-      console.warn(`[Sync] Erro ao ler companies:`, error.message);
-    }
-
-    // Se não encontrou dados, tentar estrutura legacy: users/{uid}/{uid}/documents/{collection}/items
-    if (data.length === 0) {
-      console.log(`[Sync] A tentar users/${userId}/${userId}/documents/${collectionName}/items...`);
-      try {
-        const snapshot2 = await window.firebaseDb
-          .collection('users')
-          .doc(userId)
-          .collection(userId)
-          .doc('documents')
-          .collection(collectionName)
-          .collection('items')
-          .get();
-
-        snapshot2.forEach(doc => {
-          const docData = doc.data();
-          if (docData.createdAt && docData.createdAt.toDate) {
-            docData.createdAt = docData.createdAt.toDate().toISOString();
-          }
-          if (docData.updatedAt && docData.updatedAt.toDate) {
-            docData.updatedAt = docData.updatedAt.toDate().toISOString();
-          }
-          data.push({ id: doc.id, ...docData });
-          console.log(`[Sync] Documento encontrado em users (legacy):`, doc.id);
-        });
-
-        if (data.length > 0) {
-          sourceFound = 'users (legacy)';
-          needsMigration = true;
-        }
-      } catch (error) {
-        console.warn(`[Sync] Erro ao ler users (legacy):`, error.message);
-      }
-    }
-
-    // Se ainda não encontrou, tentar outra estrutura: users/{uid}/documents/{collection}
-    if (data.length === 0) {
-      console.log(`[Sync] A tentar users/${userId}/documents/${collectionName}...`);
-      try {
-        const snapshot3 = await window.firebaseDb
-          .collection('users')
-          .doc(userId)
-          .collection('documents')
-          .collection(collectionName)
-          .get();
-
-        snapshot3.forEach(doc => {
-          const docData = doc.data();
-          if (docData.createdAt && docData.createdAt.toDate) {
-            docData.createdAt = docData.createdAt.toDate().toISOString();
-          }
-          data.push({ id: doc.id, ...docData });
-          console.log(`[Sync] Documento encontrado em users/documents:`, doc.id);
-        });
-
-        if (data.length > 0) {
-          sourceFound = 'users/documents';
-          needsMigration = true;
-        }
-      } catch (error) {
-        console.warn(`[Sync] Erro ao ler users/documents:`, error.message);
-      }
-    }
-
-    // Se encontrou dados em estrutura legacy, migrar automaticamente para companies
-    if (needsMigration && data.length > 0) {
-      console.log(`[Sync] 🚀 Migrando ${data.length} documentos de users para companies...`);
-      try {
-        const batch = window.firebaseDb.batch();
-        
-        data.forEach(doc => {
-          const newDocRef = window.firebaseDb
-            .collection('companies')
-            .doc(userId)
-            .collection(collectionName)
-            .doc(doc.id);
-          
-          batch.set(newDocRef, {
-            ...doc,
-            migratedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            originalCreatedAt: doc.createdAt || new Date().toISOString()
+        .get()
+        .then(function(snapshot) {
+          var data = [];
+          snapshot.forEach(function(doc) {
+            if (doc.id === '_init') return;
+            var docData = doc.data();
+            var item = { id: doc.id };
+            for (var key in docData) {
+              if (key !== 'id' && docData.hasOwnProperty(key)) {
+                if (docData[key] && docData[key].toDate && typeof docData[key].toDate === 'function') {
+                  item[key] = docData[key].toDate().toISOString();
+                } else {
+                  item[key] = docData[key];
+                }
+              }
+            }
+            data.push(item);
           });
+
+          console.log('[Sync] ' + collectionName + ': ' + data.length + ' documentos');
+
+          if (data.length > 0) {
+            localStorage.setItem(userKey, JSON.stringify(data));
+          }
+
+          resolve(data.length > 0 ? data : null);
+        })
+        .catch(function(error) {
+          console.warn('[Sync] Erro:', error.message);
+          // On error, try to return local data
+          if (localData) {
+            try {
+              var parsedData = JSON.parse(localData);
+              resolve(parsedData);
+              return;
+            } catch (e) {}
+          }
+          resolve(null);
         });
-        
-        await batch.commit();
-        console.log(`[Sync] ✅ Migração concluída para ${collectionName}`);
-      } catch (error) {
-        console.warn(`[Sync] ❌ Erro na migração:`, error.message);
+    });
+  }
+
+  function syncAllToLocalStorage() {
+    return new Promise(function(resolve) {
+      console.log('[Sync] Iniciando sincronizacao...');
+
+      var results = {};
+      var keys = Object.keys(COLLECTIONS);
+      var count = 0;
+
+      keys.forEach(function(key) {
+        syncCollectionToLocalStorage(COLLECTIONS[key]).then(function(data) {
+          results[key] = data;
+          count++;
+          if (count === keys.length) {
+            console.log('[Sync] Sincronizacao concluida!', results);
+            resolve(results);
+          }
+        });
+      });
+    });
+  }
+
+  function saveToFirebaseAndLocalStorage(collectionName, data, skipLocalUpdate) {
+    return new Promise(function(resolve) {
+      if (!isFirebaseReady()) {
+        resolve(saveToLocalStorageOnly(collectionName, data));
+        return;
       }
-    }
 
-    console.log(`[Sync] ${collectionName}: ${data.length} documentos encontrados em ${sourceFound || 'nenhum local'}`);
+      var userId = getUserId();
+      if (!userId) {
+        resolve(saveToLocalStorageOnly(collectionName, data));
+        return;
+      }
 
-    // Salvar no localStorage
-    if (data.length > 0) {
-      const baseKey = 'upsen_' + collectionName.toLowerCase();
-      const userKey = userId ? baseKey + '_' + userId : baseKey;
-      localStorage.setItem(userKey, JSON.stringify(data));
-    }
-
-    return data.length > 0 ? data : null;
-  }
-
-  /**
-   * Sincroniza todas as coleções do Firebase para localStorage
-   */
-  async function syncAllToLocalStorage() {
-    console.log('[Sync] Iniciando sincronização completa...');
-    
-    const results = {};
-    
-    for (const [key, collection] of Object.entries(COLLECTIONS)) {
-      const data = await syncCollectionToLocalStorage(collection);
-      results[key] = data;
-    }
-    
-    console.log('[Sync] Sincronização completa finalizada!', results);
-    return results;
-  }
-
-  // ========== SYNC: LOCALSTORAGE → FIREBASE ==========
-  /**
-   * Salva um documento no Firebase E no localStorage
-   * @param {string} collectionName - Nome da coleção
-   * @param {object} data - Dados a salvar
-   * @param {boolean} skipLocalStorageUpdate - Se true, não atualiza o localStorage (já foi atualizado pelo caller)
-   */
-  async function saveToFirebaseAndLocalStorage(collectionName, data, skipLocalStorageUpdate) {
-    if (!isFirebaseReady()) {
-      console.warn(`[Sync] Firebase não pronto, salvando apenas localmente`);
-      return saveToLocalStorageOnly(collectionName, data);
-    }
-
-    const userId = getUserId();
-    if (!userId) {
-      console.warn(`[Sync] Utilizador não autenticado, salvando apenas localmente`);
-      return saveToLocalStorageOnly(collectionName, data);
-    }
-
-    try {
-      // Adicionar ao Firebase
-      const docRef = await window.firebaseDb
-        .collection('companies')
-        .doc(userId)
-        .collection(collectionName)
-        .add({
-          ...data,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-          userId: userId
-        });
-
-      console.log(`[Sync] Documento adicionado ao Firebase: ${docRef.id}`);
-
-      // Atualizar o documento com o ID do Firebase
-      await docRef.update({ id: docRef.id });
-
-      // Apenas atualizar localStorage se não foi feito pelo caller (store.js)
-      if (!skipLocalStorageUpdate) {
-        const localData = getFromLocalStorage(collectionName);
-        // Verificar se o item já existe para evitar duplicação
-        const exists = localData.some(item => item.id === data.id || item.id === docRef.id);
-        if (!exists) {
-          localData.push({ id: docRef.id, ...data });
-          saveToLocalStorageOnly(collectionName, localData);
+      var docData = {};
+      for (var key in data) {
+        if (data.hasOwnProperty(key)) {
+          docData[key] = data[key];
         }
       }
+      
+      var serverTs = null;
+      if (typeof firebase !== 'undefined' && firebase.firestore && firebase.firestore.FieldValue) {
+        serverTs = firebase.firestore.FieldValue.serverTimestamp();
+      }
+      docData.createdAt = serverTs || new Date().toISOString();
+      docData.userId = userId;
 
-      return { success: true, id: docRef.id };
-    } catch (error) {
-      console.warn(`[Sync] Erro ao salvar no Firebase:`, error.message);
-      // Fallback: salvar apenas localmente
-      return saveToLocalStorageOnly(collectionName, data);
-    }
-  }
-
-  /**
-   * Atualiza um documento no Firebase E no localStorage
-   */
-  async function updateInFirebaseAndLocalStorage(collectionName, id, updates) {
-    if (!isFirebaseReady()) {
-      console.warn(`[Sync] Firebase não pronto, atualizando apenas localmente`);
-      return updateInLocalStorageOnly(collectionName, id, updates);
-    }
-
-    const userId = getUserId();
-    if (!userId) {
-      console.warn(`[Sync] Utilizador não autenticado, atualizando apenas localmente`);
-      return updateInLocalStorageOnly(collectionName, id, updates);
-    }
-
-    try {
-      // Atualizar no Firebase
-      await window.firebaseDb
+      window.firebaseDb
         .collection('companies')
         .doc(userId)
         .collection(collectionName)
-        .doc(id)
-        .update({
-          ...updates,
-          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        .add(docData)
+        .then(function(docRef) {
+          console.log('[Sync] Salvo no Firebase: ' + docRef.id);
+          return docRef.update({ id: docRef.id });
+        })
+        .then(function() {
+          if (!skipLocalUpdate) {
+            var localData = getFromLocalStorage(collectionName);
+            var exists = false;
+            for (var i = 0; i < localData.length; i++) {
+              if (localData[i].id === data.id) {
+                exists = true;
+                break;
+              }
+            }
+            if (!exists) {
+              localData.push({ id: data.id || docRef.id });
+              for (var key in data) {
+                if (data.hasOwnProperty(key)) {
+                  localData[localData.length - 1][key] = data[key];
+                }
+              }
+              saveToLocalStorageOnly(collectionName, localData);
+            }
+          }
+          resolve({ success: true, id: docRef.id });
+        })
+        .catch(function(error) {
+          console.warn('[Sync] Erro ao salvar:', error.message);
+          resolve(saveToLocalStorageOnly(collectionName, data));
         });
-
-      console.log(`[Sync] Documento atualizado no Firebase: ${id}`);
-
-      // Atualizar localStorage
-      updateInLocalStorageOnly(collectionName, id, updates);
-
-      return { success: true };
-    } catch (error) {
-      console.warn(`[Sync] Erro ao atualizar no Firebase:`, error.message);
-      // Fallback: atualizar apenas localmente
-      return updateInLocalStorageOnly(collectionName, id, updates);
-    }
+    });
   }
+  function updateInFirebaseAndLocalStorage(collectionName, id, updates) {
+    return new Promise(function(resolve) {
+      if (!isFirebaseReady()) {
+        resolve(updateInLocalStorageOnly(collectionName, id, updates));
+        return;
+      }
 
-  /**
-   * Remove um documento do Firebase E do localStorage
-   */
-  async function deleteFromFirebaseAndLocalStorage(collectionName, id) {
-    if (!isFirebaseReady()) {
-      console.warn(`[Sync] Firebase não pronto, removendo apenas localmente`);
-      return deleteFromLocalStorageOnly(collectionName, id);
-    }
+      var userId = getUserId();
+      if (!userId) {
+        resolve(updateInLocalStorageOnly(collectionName, id, updates));
+        return;
+      }
 
-    const userId = getUserId();
-    if (!userId) {
-      console.warn(`[Sync] Utilizador não autenticado, removendo apenas localmente`);
-      return deleteFromLocalStorageOnly(collectionName, id);
-    }
+      var updateData = {};
+      for (var key in updates) {
+        if (updates.hasOwnProperty(key)) {
+          updateData[key] = updates[key];
+        }
+      }
+      
+      var serverTs = null;
+      if (typeof firebase !== 'undefined' && firebase.firestore && firebase.firestore.FieldValue) {
+        serverTs = firebase.firestore.FieldValue.serverTimestamp();
+      }
+      updateData.updatedAt = serverTs || new Date().toISOString();
 
-    try {
-      // Remover do Firebase
-      await window.firebaseDb
+      window.firebaseDb
         .collection('companies')
         .doc(userId)
         .collection(collectionName)
         .doc(id)
-        .delete();
-
-      console.log(`[Sync] Documento removido do Firebase: ${id}`);
-
-      // Remover do localStorage
-      deleteFromLocalStorageOnly(collectionName, id);
-
-      return { success: true };
-    } catch (error) {
-      console.warn(`[Sync] Erro ao remover do Firebase:`, error.message);
-      // Fallback: remover apenas localmente
-      return deleteFromLocalStorageOnly(collectionName, id);
-    }
+        .update(updateData)
+        .then(function() {
+          updateInLocalStorageOnly(collectionName, id, updates);
+          resolve({ success: true });
+        })
+        .catch(function(error) {
+          console.warn('[Sync] Erro ao atualizar:', error.message);
+          resolve(updateInLocalStorageOnly(collectionName, id, updates));
+        });
+    });
   }
 
-  // ========== FUNÇÕES LOCALSTORAGE (FALLBACK) ==========
+  function deleteFromFirebaseAndLocalStorage(collectionName, id) {
+    return new Promise(function(resolve) {
+      if (!isFirebaseReady()) {
+        resolve(deleteFromLocalStorageOnly(collectionName, id));
+        return;
+      }
+
+      var userId = getUserId();
+      if (!userId) {
+        resolve(deleteFromLocalStorageOnly(collectionName, id));
+        return;
+      }
+
+      window.firebaseDb
+        .collection('companies')
+        .doc(userId)
+        .collection(collectionName)
+        .doc(id)
+        .delete()
+        .then(function() {
+          deleteFromLocalStorageOnly(collectionName, id);
+          resolve({ success: true });
+        })
+        .catch(function(error) {
+          console.warn('[Sync] Erro ao remover:', error.message);
+          resolve(deleteFromLocalStorageOnly(collectionName, id));
+        });
+    });
+  }
+
   function getLocalStorageKey(collectionName) {
-    const keyMap = {
+    var keyMap = {
       'expenses': 'upsen_expenses',
       'invoicesIssued': 'upsen_invoices_issued',
       'invoicesReceived': 'upsen_invoices_received',
       'budgets': 'upsen_budgets'
     };
-    const baseKey = keyMap[collectionName] || 'upsen_' + collectionName.toLowerCase();
-    
-    // Usar chave única por utilizador
-    const userId = getUserId();
-    if (userId) {
-      return baseKey + '_' + userId;
-    }
-    return baseKey;
+    var baseKey = keyMap[collectionName] || 'upsen_' + collectionName.toLowerCase();
+    var userId = getUserId();
+    return userId ? baseKey + '_' + userId : baseKey;
   }
 
   function getFromLocalStorage(collectionName) {
-    const key = getLocalStorageKey(collectionName);
+    var key = getLocalStorageKey(collectionName);
     try {
-      const data = localStorage.getItem(key);
+      var data = localStorage.getItem(key);
       return data ? JSON.parse(data) : [];
     } catch (e) {
       return [];
@@ -361,156 +321,145 @@
   }
 
   function saveToLocalStorageOnly(collectionName, data) {
-    const key = getLocalStorageKey(collectionName);
+    var key = getLocalStorageKey(collectionName);
     localStorage.setItem(key, JSON.stringify(data));
     return { success: true };
   }
 
   function updateInLocalStorageOnly(collectionName, id, updates) {
-    const list = getFromLocalStorage(collectionName);
-    const index = list.findIndex(item => item.id === id);
-    if (index !== -1) {
-      list[index] = { ...list[index], ...updates };
-      saveToLocalStorageOnly(collectionName, list);
+    var list = getFromLocalStorage(collectionName);
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === id) {
+        for (var key in updates) {
+          if (updates.hasOwnProperty(key)) {
+            list[i][key] = updates[key];
+          }
+        }
+        break;
+      }
     }
+    saveToLocalStorageOnly(collectionName, list);
     return { success: true };
   }
 
   function deleteFromLocalStorageOnly(collectionName, id) {
-    const list = getFromLocalStorage(collectionName);
-    const filtered = list.filter(item => item.id !== id);
+    var list = getFromLocalStorage(collectionName);
+    var filtered = [];
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id !== id) {
+        filtered.push(list[i]);
+      }
+    }
     saveToLocalStorageOnly(collectionName, filtered);
     return { success: true };
   }
 
-  // ========== OBTENER DADOS (PRIORIDADE: LOCALSTORAGE) ==========
-  /**
-   * Obtém dados de uma coleção - primeiro tenta localStorage,
-   * se vazio, tenta carregar do Firebase
-   */
-  async function getCollectionData(collectionName) {
-    // Primeiro tentar localStorage
-    let data = getFromLocalStorage(collectionName);
-    
-    // Se localStorage vazio e Firebase pronto, carregar do Firebase
-    if (data.length === 0 && isFirebaseReady()) {
-      console.log(`[Sync] localStorage vazio para ${collectionName}, carregando do Firebase...`);
-      data = await syncCollectionToLocalStorage(collectionName) || [];
-    }
-    
-    return data;
+  function getCollectionData(collectionName) {
+    return new Promise(function(resolve) {
+      var data = getFromLocalStorage(collectionName);
+      if (data.length === 0 && isFirebaseReady()) {
+        syncCollectionToLocalStorage(collectionName).then(function(fbData) {
+          resolve(fbData || []);
+        });
+      } else {
+        resolve(data);
+      }
+    });
   }
 
-  // ========== EXPORTS ==========
-  // Variável para controlar listeners ativos
+  // Realtime sync
   var activeListeners = {};
 
-  /**
-   * Ativa listeners em tempo real para uma coleção
-   * Quando houver alterações no Firebase, atualiza automaticamente o localStorage
-   */
   function enableRealtimeSync(collectionName) {
     if (!isFirebaseReady()) {
-      console.log(`[Realtime] Firebase não pronto para ${collectionName}`);
+      console.log('[Realtime] Firebase nao pronto para ' + collectionName);
       return;
     }
-
-    const userId = getUserId();
+    
+    var userId = getUserId();
     if (!userId) {
-      console.log(`[Realtime] Utilizador não autenticado`);
+      console.log('[Realtime] Utilizador nao autenticado para ' + collectionName);
       return;
     }
-
-    // Se já tem listener ativo, não criar outro
+    
     if (activeListeners[collectionName]) {
-      console.log(`[Realtime] Listener já ativo para ${collectionName}`);
+      console.log('[Realtime] Listener ja ativo para ' + collectionName);
       return;
     }
 
-    console.log(`[Realtime] A ativar listener para companies/${userId}/${collectionName}...`);
+    console.log('[Realtime] Ativando listener para ' + collectionName + ' (userId: ' + userId + ')');
 
     try {
-      const unsubscribe = window.firebaseDb
+      var unsubscribe = window.firebaseDb
         .collection('companies')
         .doc(userId)
         .collection(collectionName)
-        .onSnapshot((snapshot) => {
-          console.log(`[Realtime] Alteração detectada em ${collectionName}:`, snapshot.size, 'documentos');
-          
-          const data = [];
-          snapshot.forEach((doc) => {
+        .onSnapshot(function(snapshot) {
+          var data = [];
+          snapshot.forEach(function(doc) {
             if (doc.id === '_init') return;
-            const docData = doc.data();
-            if (docData.createdAt && docData.createdAt.toDate) {
-              docData.createdAt = docData.createdAt.toDate().toISOString();
+            var docData = doc.data();
+            var item = { id: doc.id };
+            for (var key in docData) {
+              if (key !== 'id' && docData.hasOwnProperty(key)) {
+                if (docData[key] && docData[key].toDate && typeof docData[key].toDate === 'function') {
+                  item[key] = docData[key].toDate().toISOString();
+                } else {
+                  item[key] = docData[key];
+                }
+              }
             }
-            if (docData.updatedAt && docData.updatedAt.toDate) {
-              docData.updatedAt = docData.updatedAt.toDate().toISOString();
-            }
-            data.push({ id: doc.id, ...docData });
+            data.push(item);
           });
 
-          // Atualizar localStorage com dados do Firebase
-          const baseKey = 'upsen_' + collectionName.toLowerCase();
-          const userKey = userId ? baseKey + '_' + userId : baseKey;
+          var baseKey = 'upsen_' + collectionName.toLowerCase();
+          var userKey = userId ? baseKey + '_' + userId : baseKey;
           localStorage.setItem(userKey, JSON.stringify(data));
 
-          // Disparar evento para通知 outras partes da app
-          window.dispatchEvent(new CustomEvent('dataSync-' + collectionName, { 
-            detail: { data: data, source: 'firebase' } 
+          window.dispatchEvent(new CustomEvent('dataSync-' + collectionName, {
+            detail: { data: data, source: 'firebase' }
           }));
-
-          console.log(`[Realtime] ${collectionName} atualizado no localStorage`);
-        }, (error) => {
-          console.warn(`[Realtime] Erro no listener de ${collectionName}:`, error.message);
+        }, function(error) {
+          console.warn('[Realtime] Erro:', error.message);
         });
 
       activeListeners[collectionName] = unsubscribe;
-      console.log(`[Realtime] ✅ Listener ativo para ${collectionName}`);
+      console.log('[Realtime] Listener ativo para ' + collectionName);
     } catch (error) {
-      console.warn(`[Realtime] Erro ao ativar listener:`, error.message);
+      console.warn('[Realtime] Erro ao ativar:', error.message);
     }
   }
 
-  /**
-   * Desativa listeners em tempo real
-   */
   function disableRealtimeSync(collectionName) {
     if (activeListeners[collectionName]) {
       activeListeners[collectionName]();
       delete activeListeners[collectionName];
-      console.log(`[Realtime] Listener desativado para ${collectionName}`);
     }
   }
 
-  /**
-   * Desativa todos os listeners
-   */
   function disableAllRealtimeSync() {
-    Object.keys(activeListeners).forEach(function(col) {
-      disableRealtimeSync(col);
-    });
+    var keys = Object.keys(activeListeners);
+    for (var i = 0; i < keys.length; i++) {
+      disableRealtimeSync(keys[i]);
+    }
   }
 
-  // ========== EXPORTS ==========
   window.FirebaseSync = {
-    syncAllToLocalStorage,
-    syncCollectionToLocalStorage,
-    saveToFirebaseAndLocalStorage,
-    updateInFirebaseAndLocalStorage,
-    deleteFromFirebaseAndLocalStorage,
-    getCollectionData,
-    getFromLocalStorage,
-    isFirebaseReady,
-    getUserId,
-    COLLECTIONS,
-    // Novas funções de sync em tempo real
-    enableRealtimeSync,
-    disableRealtimeSync,
-    disableAllRealtimeSync,
-    activeListeners
+    syncAllToLocalStorage: syncAllToLocalStorage,
+    syncCollectionToLocalStorage: syncCollectionToLocalStorage,
+    saveToFirebaseAndLocalStorage: saveToFirebaseAndLocalStorage,
+    updateInFirebaseAndLocalStorage: updateInFirebaseAndLocalStorage,
+    deleteFromFirebaseAndLocalStorage: deleteFromFirebaseAndLocalStorage,
+    getCollectionData: getCollectionData,
+    getFromLocalStorage: getFromLocalStorage,
+    isFirebaseReady: isFirebaseReady,
+    getUserId: getUserId,
+    COLLECTIONS: COLLECTIONS,
+    enableRealtimeSync: enableRealtimeSync,
+    disableRealtimeSync: disableRealtimeSync,
+    disableAllRealtimeSync: disableAllRealtimeSync,
+    activeListeners: activeListeners
   };
 
-  console.log('✅ Firebase Sync Service carregado com Realtime Sync!');
+  console.log('Firebase Sync Service carregado!');
 })();
-

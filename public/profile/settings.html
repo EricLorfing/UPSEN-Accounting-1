@@ -351,8 +351,22 @@ function applyTheme(theme) {
     });
   }
 }
+// Logout function with Firebase sign out
 function doLogout() {
   if (confirm('Cerrar sesion?')) {
+    // 1. Limpar localStorage primeiro
+    localStorage.removeItem('upsen_current_user');
+    
+    // 2. Try to sign out from Firebase
+    if (window.firebaseAuth) {
+      window.firebaseAuth.signOut().then(function() {
+        console.log('Firebase signed out');
+      }).catch(function(e) {
+        console.log('Firebase sign out error:', e);
+      });
+    }
+    
+    // 3. Try AuthService logout
     var auth = window.AuthService || window.Auth;
     if (auth && auth.logout) {
       auth.logout().then(function() { window.location.href = '../login.html'; });

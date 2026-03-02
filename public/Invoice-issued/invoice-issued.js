@@ -384,8 +384,13 @@ window.viewInvoice = function(id) {
       '<div class="text-muted mt-3 text-end"><small>Creado: ' + new Date(invoice.createdAt || '').toLocaleString() + '</small></div>';
   }
 
-  if (window.viewInvoiceModal) {
-    window.viewInvoiceModal.show();
+  var modalEl = document.getElementById('viewInvoiceModal');
+  if (modalEl) {
+    var modal = bootstrap.Modal.getInstance(modalEl);
+    if (!modal) {
+      modal = new bootstrap.Modal(modalEl);
+    }
+    modal.show();
   }
 };
 

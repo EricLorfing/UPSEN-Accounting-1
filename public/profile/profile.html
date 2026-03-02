@@ -451,7 +451,29 @@ function deleteAccount() {
     });
   } 
 }
-function logout() { if (confirm('Cerrar sesion?')) { AuthSystem.logout(); window.location.href = '../login.html'; } }
+// Logout function with Firebase sign out
+function logout() { 
+  if (confirm('Cerrar sesion?')) { 
+    // 1. Limpar localStorage primeiro
+    localStorage.removeItem('upsen_current_user');
+    
+    // 2. Try to sign out from Firebase
+    if (window.firebaseAuth) {
+      window.firebaseAuth.signOut().then(function() {
+        console.log('Firebase signed out');
+      }).catch(function(e) {
+        console.log('Firebase sign out error:', e);
+      });
+    }
+    
+    // 3. Try AuthService logout
+    if (AuthSystem && AuthSystem.logout) {
+      AuthSystem.logout();
+    }
+    
+    window.location.href = '../login.html'; 
+  } 
+}
 </script>
 </body>
 </html>
