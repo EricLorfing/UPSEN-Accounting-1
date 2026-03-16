@@ -195,9 +195,11 @@
         .add(docData)
         .then(function(docRef) {
           console.log('[Sync] Salvo no Firebase: ' + docRef.id);
-          return docRef.update({ id: docRef.id });
+          return docRef.update({ id: docRef.id }).then(function() {
+            return docRef; // Return docRef to the next .then()
+          });
         })
-        .then(function() {
+        .then(function(docRef) {
           if (!skipLocalUpdate) {
             var localData = getFromLocalStorage(collectionName);
             var exists = false;

@@ -1,0 +1,245 @@
+
+/**
+ * verifactu-integration.js
+ * Integração automática do sistema de hash Veri*Factu com o Store
+ * Este serviço registra automaticamente o hash quando uma fatura é criada
+ */
+
+(function() {
+  'use strict';
+
+  // ========== CONFIGURATION ==========
+  var CONFIG = {
+    // Auto-register on invoice creation
+    autoRegister: true,
+    // Show notifications
+    showNotifications: true
+  };
+
+  // ========== NOTIFICATION HELPER ==========
+  function showNotification(message, type) {
+    type = type || 'info';
+    
+    if (CONFIG.showNotifications && window.showToast) {
+      window.showToast(message, type);
+    } else if (CONFIG.showNotifications) {
+      console.log('[VeriFactu] ' + message);
+    }
+  }
+
+  // ========== MAIN INTEGRATION FUNCTION ==========
+
+  /**
+   * Criar e registar uma fatura emitida com hash Veri*Factu
+   * @param {Object} invoiceData - Dados da fatura
+   * @returns {Promise<Object>} - Fatura criada com hash
+   */
+  async function createInvoiceIssued(invoiceData) {
+    console.log('[VeriFactu] A criar fatura emitida com hash:', invoiceData.invoiceNumber);
+    
+    try {
+      // 1. Adicionar a fatura ao store primeiro
+      var invoice = await window.addInvoiceIssued(invoiceData);
+      
+      // 2. Se auto-register está ativo, calcular e registar hash
+      if (CONFIG.autoRegister && window.VeriFactuLedger) {
+        var result = await window.VeriFactuLedger.registerInvoice(invoice, 'create');
+        
+        if (result.success) {
+          // 3. Atualizar a fatura com os dados do hash
+          invoice.verifactuHash = result.hash;
+          invoice.previousHash = result.previousHash;
+          invoice.verifactuTimestamp = result.registeredAt;
+          invoice.verifactuRegistered = true;
+          invoice.verifactuStatus = 'registered';
+          
+          // Atualizar no store
+          await updateInvoiceIssued(invoice.id, {
+            verifactuHash: result.hash,
+            previousHash: result.previousHash,
+            verifactuTimestamp: result.registeredAt,
+            verifactuRegistered: true,
+            verifactuStatus: 'registered'
+          });
+          
+          console.log('[VeriFactu] Fatura registada com hash:', result.hash.substring(0, 16) + '...');
+          showNotification('Fatura registada no Veri*Factu com sucesso', 'success');
+        }
+      }
+      
+      return invoice;
+      
+    } catch (error) {
+      console.error('[VeriFactu] Erro ao criar fatura:', error);
+      showNotification('Erro ao registar fatura no Veri*Factu', 'error');
+      throw error;
+    }
+  }
+
+  /**
+   * Criar e registar uma fatura recebida com hash Veri*Factu
+   * @param {Object} invoiceData - Dados da fatura
+   * @returns {Promise<Object>} - Fatura criada com hash
+   */
+  async function createInvoiceReceived(invoiceData) {
+    console.log('[VeriFactu] A criar fatura recebida com hash:', invoiceData.invoiceNumber);
+    
+    try {
+      // 1. Adicionar a fatura ao store primeiro
+      var invoice = await window.addInvoiceReceived(invoiceData);
+      
+      // 2. Se auto-register está ativo, calcular e registar hash
+      if (CONFIG.autoRegister && window.VeriFactuLedger) {
+        var result = await window.VeriFactuLedger.registerInvoice(invoice, 'create');
+        
+        if (result.success) {
+          // 3. Atualizar a fatura com os dados do hash
+          invoice.verifactuHash = result.hash;
+          invoice.previousHash = result.previousHash;
+          invoice.verifactuTimestamp = result.registeredAt;
+          invoice.verifactuRegistered = true;
+          invoice.verifactuStatus = 'registered';
+          
+          // Atualizar no store
+          await window.updateInvoiceReceived(invoice.id, {
+            verifactuHash: result.hash,
+            previousHash: result.previousHash,
+            verifactuTimestamp: result.registeredAt,
+            verifactuRegistered: true,
+            verifactuStatus: 'registered'
+          });
+          
+          console.log('[VeriFactu] Fatura recebida registada com hash:', result.hash.substring(0, 16) + '...');
+          showNotification('Fatura recebida registada no Veri*Factu com sucesso', 'success');
+        }
+      }
+      
+      return invoice;
+      
+    } catch (error) {
+      console.error('[VeriFactu] Erro ao criar fatura recebida:', error);
+      showNotification('Erro ao registar fatura recebida no Veri*Factu', 'error');
+      throw error;
+    }
+  }
+
+  /**
+   * Atualizar uma fatura (gera novo hash se já estava registada)
+   */
+  async function updateInvoiceIssued(id, updates) {
+    // Implementar atualização no store
+    if (window.updateInvoiceIssuedFromStore) {
+      return await window.updateInvoiceIssuedFromStore(id, updates);
+    }
+    
+    // Fallback: usar função direta
+    var invoices = window.getInvoicesIssuedSync();
+    var index = invoices.findIndex(function(inv) { return inv.id === id; });
+    if (index !== -1) {
+      invoices[index] = Object.assign({}, invoices[index], updates);
+      var key = 'upsen_invoices_issued_' + window.getUserId();
+      localStorage.setItem(key, JSON.stringify(invoices));
+      return invoices[index];
+    }
+    return null;
+  }
+
+  /**
+   * Verificar o estado Veri*Factu de uma fatura
+   */
+  function getInvoiceVeriFactuStatus(invoice) {
+    if (!invoice) {
+      return { registered: false, status: 'not_found' };
+    }
+    
+    if (invoice.verifactuRegistered && invoice.verifactuHash) {
+      return {
+        registered: true,
+        status: invoice.verifactuStatus || 'registered',
+        hash: invoice.verifactuHash,
+        timestamp: invoice.verifactuTimestamp,
+        preview: invoice.verifactuHash ? invoice.verifactuHash.substring(0, 8) + '...' : null
+      };
+    }
+    
+    return {
+      registered: false,
+      status: invoice.verifactuStatus || 'draft',
+      hash: null,
+      timestamp: null,
+      preview: null
+    };
+  }
+
+  /**
+   * Obter estatísticas Veri*Factu
+   */
+  function getVeriFactuStats() {
+    var stats = {
+      issued: { total: 0, registered: 0, draft: 0 },
+      received: { total: 0, registered: 0, draft: 0 }
+    };
+    
+    // Faturas emitidas
+    try {
+      var issuedInvoices = window.getInvoicesIssuedSync() || [];
+      stats.issued.total = issuedInvoices.length;
+      issuedInvoices.forEach(function(inv) {
+        if (inv.verifactuRegistered) {
+          stats.issued.registered++;
+        } else {
+          stats.issued.draft++;
+        }
+      });
+    } catch (e) {}
+    
+    // Faturas recebidas
+    try {
+      var receivedInvoices = window.getInvoicesReceivedSync() || [];
+      stats.received.total = receivedInvoices.length;
+      receivedInvoices.forEach(function(inv) {
+        if (inv.verifactuRegistered) {
+          stats.received.registered++;
+        } else {
+          stats.received.draft++;
+        }
+      });
+    } catch (e) {}
+    
+    // Estatísticas do ledger
+    if (window.VeriFactuLedger && window.VeriFactuLedger.getStats) {
+      stats.ledger = window.VeriFactuLedger.getStats();
+    }
+    
+    return stats;
+  }
+
+  /**
+   * Configurar o serviço
+   */
+  function configure(options) {
+    if (options.autoRegister !== undefined) {
+      CONFIG.autoRegister = options.autoRegister;
+    }
+    if (options.showNotifications !== undefined) {
+      CONFIG.showNotifications = options.showNotifications;
+    }
+    console.log('[VeriFactu] Configuração atualizada:', CONFIG);
+  }
+
+  // ========== EXPORT TO WINDOW ==========
+  window.VeriFactuIntegration = {
+    createInvoiceIssued: createInvoiceIssued,
+    createInvoiceReceived: createInvoiceReceived,
+    updateInvoiceIssued: updateInvoiceIssued,
+    getStatus: getInvoiceVeriFactuStatus,
+    getStats: getVeriFactuStats,
+    configure: configure,
+    CONFIG: CONFIG
+  };
+
+  console.log('✅ VeriFactu Integration service loaded');
+
+})();
+
+

@@ -9,7 +9,7 @@
   <style>
     * { box-sizing: border-box; }
     body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #eef1f7; min-height: 100vh; }
-    
+
     .sidebar { 
       width: 260px; 
       background: linear-gradient(180deg, #2c3e50 0%, #1a252f 100%); 
@@ -47,12 +47,12 @@
     .sidebar-link:hover { color: #1abc9c; }
     .sidebar-link i { width: 24px; text-align: center; color: rgba(255,255,255,0.7); transition: color 0.3s; }
     .sidebar-menu li:hover i, .sidebar-menu li.active i { color: #1abc9c; }
-    
+
     .main-content { margin-left: 260px; padding: 30px; min-height: 100vh; }
     .page-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
     .page-title { font-size: 2em; font-weight: 700; color: #2c3e50; display: flex; align-items: center; gap: 15px; }
     .page-title i { color: #1abc9c; }
-    
+
     .modern-card { 
       background: white; 
       border-radius: 16px; 
@@ -63,7 +63,7 @@
       border: 1px solid rgba(0,0,0,0.05);
     }
     .modern-card:hover { transform: translateY(-3px); box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
-    
+
     .summary-card {
       background: white;
       border-radius: 16px;
@@ -89,11 +89,11 @@
     .summary-icon.green { background: linear-gradient(135deg, rgba(26, 188, 156, 0.15), rgba(22, 160, 133, 0.15)); color: #1abc9c; }
     .summary-icon.orange { background: linear-gradient(135deg, rgba(243, 156, 18, 0.15), rgba(230, 126, 34, 0.15)); color: #f39c12; }
     .summary-icon.purple { background: linear-gradient(135deg, rgba(155, 89, 182, 0.15), rgba(142, 68, 173, 0.15)); color: #9b59b6; }
-    
+
     .summary-card h3 { font-size: 0.9em; color: #6c757d; margin-bottom: 10px; font-weight: 500; }
     .summary-card p { font-size: 1.8em; font-weight: 700; color: #2c3e50; margin: 0; }
     .summary-card span { font-size: 0.85em; color: #6c757d; }
-    
+
     .section-title { 
       color: #2a4d9c; 
       font-weight: 600; 
@@ -103,7 +103,7 @@
       gap: 10px;
     }
     .section-title i { color: #1abc9c; }
-    
+
     .btn { border-radius: 8px; padding: 8px 16px; font-weight: 500; transition: all 0.3s; border: none; font-size: 0.9rem; }
     .btn-primary { background: linear-gradient(135deg, #2a4d9c, #3a6cd6); color: white; }
     .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(42, 77, 156, 0.4); color: white; }
@@ -113,7 +113,7 @@
     .btn-secondary:hover { background: #dee2e6; transform: translateY(-2px); }
     .btn-danger { background: linear-gradient(135deg, #e74c3c, #c0392b); color: white; }
     .btn-danger:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(231, 76, 60, 0.4); color: white; }
-    
+
     .form-control, .form-select {
       border-radius: 10px;
       padding: 12px 15px;
@@ -124,7 +124,7 @@
       border-color: #2a4d9c;
       box-shadow: 0 0 0 4px rgba(42, 77, 156, 0.1);
     }
-    
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -134,22 +134,52 @@
       background: linear-gradient(135deg, #2a4d9c, #3a6cd6); 
       color: white; 
       font-weight: 600; 
-      padding: 15px; 
+      padding: 10px 8px; 
+      font-size: 0.85rem;
       text-align: left;
+      white-space: nowrap;
     }
     th:first-child { border-radius: 10px 0 0 0; }
     th:last-child { border-radius: 0 10px 0 0; }
-    td { padding: 15px; border-bottom: 1px solid #e9ecef; color: #2c3e50; }
+    td { 
+      padding: 12px 8px; 
+      border-bottom: 1px solid #e9ecef; 
+      color: #2c3e50; 
+      font-size: 0.9rem;
+      white-space: nowrap;
+    }
     tr:hover td { background: rgba(26, 188, 156, 0.05); }
     
+    .table-responsive {
+      -webkit-overflow-scrolling: touch;
+    }
+    
+    @media (max-width: 992px) {
+      table { font-size: 0.85rem; }
+      th { 
+        font-size: 0.8rem; 
+        padding: 8px 4px !important; 
+      }
+      td { 
+        padding: 8px 4px !important; 
+        font-size: 0.85rem;
+      }
+      .action-buttons { white-space: nowrap; }
+      .btn-sm { 
+        padding: 4px 6px !important; 
+        font-size: 0.7rem !important; 
+        margin: 0 1px;
+      }
+    }
+
     .modal-content { border-radius: 16px; overflow: hidden; border: none; box-shadow: 0 15px 50px rgba(0,0,0,0.2); }
     .modal-header { background: linear-gradient(135deg, #2a4d9c, #3a6cd6); color: white; border: none; padding: 20px 25px; }
     .modal-header .btn-close { filter: brightness(0) invert(1); }
     .modal-body { padding: 25px; background: #f6f8fc; }
     .modal-footer { padding: 20px 25px; border-top: 1px solid #e9ecef; background: #f6f8fc; }
-    
+
     .chart-container { position: relative; height: 300px; }
-    
+
     @media (max-width: 992px) {
       .sidebar { position: relative; width: 100%; min-height: auto; }
       .main-content { margin-left: 0; }
@@ -178,7 +208,7 @@
         </li>
       </ul>
     </aside>
-    
+
     <main class="main-content col">
       <div class="page-header">
         <h1 class="page-title"><i class="fas fa-file-export"></i> Facturas emitidas</h1>
@@ -196,52 +226,93 @@
       </div>
 
       <div class="row mb-4">
-        <div class="col-md-3 mb-3">
+        <div class="col-md-2 mb-3">
           <div class="summary-card">
             <div class="summary-icon orange"><i class="fas fa-clock"></i></div>
             <h3>Pendientes</h3>
             <p id="pendingTotal">EUR 0,00</p>
           </div>
         </div>
-        <div class="col-md-3 mb-3">
+        <div class="col-md-2 mb-3">
           <div class="summary-card">
             <div class="summary-icon red"><i class="fas fa-exclamation-triangle"></i></div>
             <h3>Vencidas</h3>
             <p id="overdueTotal">EUR 0,00</p>
           </div>
         </div>
-        <div class="col-md-3 mb-3">
+        <div class="col-md-2 mb-3">
           <div class="summary-card">
             <div class="summary-icon blue"><i class="fas fa-calendar-check"></i></div>
-            <h3>Creadas este mes</h3>
+            <h3>Creadas mes</h3>
             <p id="monthlyCount"><span>0</span></p>
           </div>
         </div>
-        <div class="col-md-3 mb-3">
+        <div class="col-md-2 mb-3">
           <div class="summary-card">
             <div class="summary-icon purple"><i class="fas fa-chart-line"></i></div>
             <h3>Promedio</h3>
             <p id="averageAmount"><span>EUR 0,00</span></p>
           </div>
         </div>
-      </div>
+        
+
+
+
 
       <div class="modern-card">
         <h5 class="section-title"><i class="fas fa-list"></i> Facturas emitidas</h5>
+        
+        <!-- NEW: Filter Row -->
+        <div class="row mb-3">
+          <div class="col-md-3">
+            <label class="form-label">Método Pago</label>
+            <select id="paymentFilter" class="form-select">
+              <option value="todas">Todas</option>
+              <option value="efectivo">💵 Efectivo</option>
+              <option value="tarjeta">💳 Tarjeta</option>
+              <option value="transferencia">🏦 Transferencia</option>
+              <option value="recibo">📄 Recibo</option>
+              <option value="cheque">✉️ Cheque</option>
+              <option value="paypal">💸 Paypal</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Período</label>
+            <select id="dateFilter" class="form-select">
+              <option value="todos">Todos</option>
+              <option value="mes">Este mes</option>
+              <option value="trimestre">Este trimestre</option>
+              <option value="ano">Este año</option>
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label">Buscar</label>
+            <input type="text" id="searchInput" class="form-control" placeholder="Número, cliente, notas...">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">&nbsp;</label>
+            <button class="btn btn-outline-secondary w-100" onclick="clearFilters()">Limpiar</button>
+          </div>
+        </div>
+        
         <div class="table-responsive">
           <table>
+
             <thead>
               <tr>
-                <th>Numero</th>
-                <th>Cliente</th>
-                <th>Fecha</th>
-                <th>Vence</th>
-                <th>Base</th>
-                <th>IVA %</th>
-                <th>IVA</th>
-                <th>Total</th>
-                <th>Estado</th>
-                <th>Acciones</th>
+              <th><i class="fas fa-hashtag me-1" title="Número"></i>#</th>
+              <th title="Cliente">Cliente</th>
+              <th title="Fecha Emisión">Fecha</th>
+              <th title="Fecha Vencimiento">Vence</th>
+              <th title="Base Imponible">Base</th>
+              <th title="IVA %">IVA%</th>
+              <th title="IVA Amount">IVA</th>
+              <th title="Total">Total</th>
+              <th title="Veri*Factu">Veri</th>
+              <th title="Estado">Estado</th>
+              <th title="Método Pago">Pago</th>
+              <th>Acciones</th>
+
               </tr>
             </thead>
             <tbody id="invoiceTbody">
@@ -305,7 +376,7 @@
               <input type="number" step="0.01" name="ivaRate" class="form-control" placeholder="21" value="21" />
             </div>
           </div>
-          <div class="mb-3">
+            <div class="mb-3">
             <label class="form-label">Estado</label>
             <select name="state" class="form-select">
               <option value="Pendiente">Pendiente</option>
@@ -313,7 +384,27 @@
               <option value="Vencida">Vencida</option>
             </select>
           </div>
+          
+          <!-- NEW: Payment Method for New Invoice -->
+          <div class="mb-3">
+            <label class="form-label">Método de pago <small>(si Pagada)</small></label>
+            <select name="paymentMethod" class="form-select">
+              <option value="">-- Seleccionar --</option>
+              <option value="efectivo">💵 Efectivo</option>
+              <option value="tarjeta">💳 Tarjeta</option>
+              <option value="transferencia">🏦 Ingreso/Transferencia</option>
+              <option value="recibo">📄 Recibo Bancario</option>
+              <option value="cheque">✉️ Pagaré/Cheque</option>
+              <option value="paypal">💸 Paypal</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Fecha de pago <small>(si Pagada)</small></label>
+            <input type="date" name="paymentDate" class="form-control" />
+            <div class="form-text">Se deja vacío, se usará la fecha actual</div>
+          </div>
         </form>
+
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -341,8 +432,52 @@
   </div>
 </div>
 
+<!-- Modal Marcar Pagada -->
+<div class="modal fade" id="modalMarkPaid" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-check-circle me-2 text-success"></i>Marcar como Pagada</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="formMarkPaid">
+          <input type="hidden" name="invoiceId" id="markPaidInvoiceId" />
+          <div class="mb-3">
+            <label class="form-label">Método de pago <span class="text-danger">*</span></label>
+            <select name="paymentMethod" class="form-select" required>
+              <option value="">-- Seleccionar método --</option>
+              <option value="efectivo">💵 Efectivo</option>
+              <option value="tarjeta">💳 Tarjeta</option>
+              <option value="transferencia">🏦 Ingreso/Transferencia</option>
+              <option value="recibo">📄 Recibo Bancario</option>
+              <option value="cheque">✉️ Pagaré/Cheque</option>
+              <option value="paypal">💸 Paypal</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Fecha de pago <span class="text-danger">*</span></label>
+            <input type="date" name="paymentDate" class="form-control" required />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Notas</label>
+            <textarea name="paymentNotes" class="form-control" rows="2" placeholder="Ref, banco, nº tarjeta..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button type="button" class="btn btn-success" id="confirmMarkPaid">
+          <i class="fas fa-check me-2"></i>Confirmar Pago
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Exportar Facturas -->
 <div class="modal fade" id="modalExport" tabindex="-1">
+
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
@@ -392,7 +527,7 @@
           <i class="fas fa-info-circle me-2"></i>
           <strong>Formato requerido:</strong> El CSV debe tener las columnas: Numero, Cliente, NIF, Fecha, Vence, Base Imponible, IVA Rate, Estado
         </div>
-        <button type="button" class="btn btn-info" onclick="downloadIssuedInvoiceTemplate()">
+        <button type="ssbutton" class="btn btn-info" onclick="downloadIssuedInvoiceTemplate()">
           <i class="fas fa-download me-2"></i>Descargar plantilla
         </button>
       </div>
@@ -443,31 +578,31 @@ document.addEventListener('DOMContentLoaded', function() {
   if (modalEl) {
     modalInvoice = new bootstrap.Modal(modalEl);
   }
-  
+
   var viewModalEl = document.getElementById('viewInvoiceModal');
   if (viewModalEl) {
     viewInvoiceModal = new bootstrap.Modal(viewModalEl);
     // Expose to window for the viewInvoice function
     window.viewInvoiceModal = viewInvoiceModal;
   }
-  
+
   var exportModalEl = document.getElementById('modalExport');
   if (exportModalEl) {
     modalExport = new bootstrap.Modal(exportModalEl);
   }
-  
+
   var importModalEl = document.getElementById('modalImport');
   if (importModalEl) {
     modalImport = new bootstrap.Modal(importModalEl);
   }
-  
+
   // New Invoice Button
   document.getElementById('newInvoiceBtn').addEventListener('click', function() {
     var date = new Date();
     var num = 'INV-' + date.getFullYear() + '-' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
     var numberInput = document.querySelector('#formNewInvoiceIssued input[name="invoiceNumber"]');
     if (numberInput) numberInput.value = num;
-    
+
     var invoiceDate = document.querySelector('#formNewInvoiceIssued input[name="invoiceDate"]');
     var dueDate = document.querySelector('#formNewInvoiceIssued input[name="dueDate"]');
     if (invoiceDate) invoiceDate.value = new Date().toISOString().split('T')[0];
@@ -476,26 +611,26 @@ document.addEventListener('DOMContentLoaded', function() {
       due.setDate(due.getDate() + 30);
       dueDate.value = due.toISOString().split('T')[0];
     }
-    
+
     if (modalInvoice) {
       modalInvoice.show();
     }
   });
-  
+
   // Export Button
   document.getElementById('btnExport').addEventListener('click', function() {
     if (modalExport) {
       modalExport.show();
     }
   });
-  
+
   // Import Button
   document.getElementById('btnImport').addEventListener('click', function() {
     if (modalImport) {
       modalImport.show();
     }
   });
-  
+
   // Confirm Import Button
   document.getElementById('confirmImportBtn').addEventListener('click', function() {
     var fileInput = document.getElementById('importFileInputIssued');
@@ -507,7 +642,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof importInvoicesFromCSV === 'function') {
           count = importInvoicesFromCSV(content);
         }
-        
+
         if (count > 0) {
           alert(count + ' facturas importadas con éxito!');
           renderInvoices();
@@ -517,7 +652,7 @@ document.addEventListener('DOMContentLoaded', function() {
         } else {
           alert('Ninguna factura importada. Verifica el formato del CSV.');
         }
-        
+
         fileInput.value = '';
       };
       reader.readAsText(fileInput.files[0]);
@@ -525,24 +660,24 @@ document.addEventListener('DOMContentLoaded', function() {
       alert('Por favor, selecciona un archivo CSV.');
     }
   });
-  
+
   // Confirm Export Button
   document.getElementById('confirmExportBtn').addEventListener('click', function() {
     var format = document.getElementById('exportFormat')?.value || 'pdf';
     var period = document.getElementById('exportPeriod')?.value || 'all';
-    
+
     if (typeof exportInvoices === 'function') {
       exportInvoices(format, period);
     } else {
       // Fallback export
       exportInvoicesFallback(format, period);
     }
-    
+
     if (modalExport) {
       modalExport.hide();
     }
   });
-  
+
   // Refresh button - only add event listener if element exists
   var refreshBtn = document.getElementById('refreshBtn');
   if (refreshBtn) {
@@ -550,7 +685,7 @@ document.addEventListener('DOMContentLoaded', function() {
       location.reload();
     });
   }
-  
+
   // Sidebar link handling
   document.querySelectorAll('.sidebar-link').forEach(function(link) {
     link.addEventListener('click', function(e) {
@@ -564,6 +699,9 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
+// Confirm logout
+function confirmLogout() {
+  if (confirm('¿Cerrar sesion?')) {
 // Confirm logout - global function
 window.confirmLogout = function() {
   if (confirm('¿Cerrar sesión?')) {
@@ -589,8 +727,8 @@ window.confirmLogout = function() {
       window.location.href = '../login.html';
     }
   }
+}
 };
-</script>
-</body>
+    </script>
+  </body>
 </html>
-

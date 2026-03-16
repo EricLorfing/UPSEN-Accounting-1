@@ -669,49 +669,75 @@ function initDashboard() {
   // Trigger Firebase sync if user is logged in and Firebase is ready
   if (userId && userId !== 'unknown' && window.FirebaseSync && window.FirebaseSync.syncAllToLocalStorage) {
     console.log('Iniciando sincronização Firebase...');
-    window.FirebaseSync.syncAllToLocalStorage().then(function() {
-      console.log('Sincronização concluída!');
-      // Reload data from localStorage after sync
-      loadDashboardData(userId);
+    // MODIFICADO: Agora passa os resultados do sync para loadDashboardData
+    window.FirebaseSync.syncAllToLocalStorage().then(function(syncResults) {
+      console.log('Sincronização concluída!', syncResults);
+      // Passar os resultados da sincronização (dados do Firebase) para loadDashboardData
+      loadDashboardData(userId, syncResults);
       renderDashboardContent();
     }).catch(function(err) {
       console.warn('Erro na sincronização:', err);
-      loadDashboardData(userId);
+      loadDashboardData(userId, null); // Fallback para localStorage
       renderDashboardContent();
     });
   } else {
     // No Firebase sync, load directly from localStorage
-    loadDashboardData(userId);
+    loadDashboardData(userId, null);
     renderDashboardContent();
   }
 }
 
 // Load data from localStorage after sync
-function loadDashboardData(userId) {
-  // USAR store.js para obter dados - isso garante consistência
-  if (window.getExpensesSync) {
-    window._dashboardExpenses = window.getExpensesSync() || [];
-    console.log('Expenses carregados do store.js:', window._dashboardExpenses.length);
+// MODIFICADO: Agora usa os dados retornados pelo syncAllToLocalStorage diretamente
+// em vez de chamar as funções sync novamente (que liam do localStorage)
+function loadDashboardData(userId, syncResults) {
+  // Se temos resultados da sincronização (dados do Firebase), usar esses
+  if (syncResults) {
+    if (syncResults.expenses) {
+      window._dashboardExpenses = syncResults.expenses;
+      console.log('Expenses carregados do Firebase: ', window._dashboardExpenses.length);
+    } else {
+      window._dashboardExpenses = [];
+    }
+    
+    if (syncResults.invoicesIssued) {
+      window._dashboardInvoicesIssued = syncResults.invoicesIssued;
+      console.log('Invoices Issued carregados do Firebase: ', window._dashboardInvoicesIssued.length);
+    } else {
+      window._dashboardInvoicesIssued = [];
+    }
+    
+    if (syncResults.invoicesReceived) {
+      window._dashboardInvoicesReceived = syncResults.invoicesReceived;
+      console.log('Invoices Received carregados do Firebase: ', window._dashboardInvoicesReceived.length);
+    } else {
+      window._dashboardInvoicesReceived = [];
+    }
   } else {
-    // Fallback: carregar diretamente do localStorage
-    var expensesData = localStorage.getItem('upsen_expenses_' + userId);
-    window._dashboardExpenses = expensesData ? JSON.parse(expensesData) : [];
-  }
-  
-  if (window.getInvoicesIssuedSync) {
-    window._dashboardInvoicesIssued = window.getInvoicesIssuedSync() || [];
-    console.log('Invoices Issued carregados do store.js:', window._dashboardInvoicesIssued.length);
-  } else {
-    var invoicesIssuedData = localStorage.getItem('upsen_invoices_issued_' + userId);
-    window._dashboardInvoicesIssued = invoicesIssuedData ? JSON.parse(invoicesIssuedData) : [];
-  }
-  
-  if (window.getInvoicesReceivedSync) {
-    window._dashboardInvoicesReceived = window.getInvoicesReceivedSync() || [];
-    console.log('Invoices Received carregados do store.js:', window._dashboardInvoicesReceived.length);
-  } else {
-    var invoicesReceivedData = localStorage.getItem('upsen_invoices_received_' + userId);
-    window._dashboardInvoicesReceived = invoicesReceivedData ? JSON.parse(invoicesReceivedData) : [];
+    // Fallback: se não há resultados do sync, usar store.js (localStorage)
+    if (window.getExpensesSync) {
+      window._dashboardExpenses = window.getExpensesSync() || [];
+      console.log('Expenses carregados do store.js (fallback):', window._dashboardExpenses.length);
+    } else {
+      var expensesData = localStorage.getItem('upsen_expenses_' + userId);
+      window._dashboardExpenses = expensesData ? JSON.parse(expensesData) : [];
+    }
+    
+    if (window.getInvoicesIssuedSync) {
+      window._dashboardInvoicesIssued = window.getInvoicesIssuedSync() || [];
+      console.log('Invoices Issued carregados do store.js (fallback):', window._dashboardInvoicesIssued.length);
+    } else {
+      var invoicesIssuedData = localStorage.getItem('upsen_invoices_issued_' + userId);
+      window._dashboardInvoicesIssued = invoicesIssuedData ? JSON.parse(invoicesIssuedData) : [];
+    }
+    
+    if (window.getInvoicesReceivedSync) {
+      window._dashboardInvoicesReceived = window.getInvoicesReceivedSync() || [];
+      console.log('Invoices Received carregados do store.js (fallback):', window._dashboardInvoicesReceived.length);
+    } else {
+      var invoicesReceivedData = localStorage.getItem('upsen_invoices_received_' + userId);
+      window._dashboardInvoicesReceived = invoicesReceivedData ? JSON.parse(invoicesReceivedData) : [];
+    }
   }
   
   console.log('Dados carregados - Expenses:', window._dashboardExpenses.length, 'Invoices Issued:', window._dashboardInvoicesIssued.length, 'Invoices Received:', window._dashboardInvoicesReceived.length);

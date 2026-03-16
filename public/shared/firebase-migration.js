@@ -121,16 +121,16 @@
   // Mapear chaves localStorage para colecoes Firebase
   function getCollectionMapping() {
     var userId = getUserId() || '';
-    return {
-      'upsen_expenses': 'expenses',
-      'upsen_expenses_' + userId: 'expenses',
-      'upsen_invoices_issued': 'invoicesIssued',
-      'upsen_invoices_issued_' + userId: 'invoicesIssued',
-      'upsen_invoices_received': 'invoicesReceived',
-      'upsen_invoices_received_' + userId: 'invoicesReceived',
-      'upsen_budgets': 'budgets',
-      'upsen_budgets_' + userId: 'budgets'
-    };
+    var mapping = {};
+    mapping['upsen_expenses'] = 'expenses';
+    mapping['upsen_expenses_' + userId] = 'expenses';
+    mapping['upsen_invoices_issued'] = 'invoicesIssued';
+    mapping['upsen_invoices_issued_' + userId] = 'invoicesIssued';
+    mapping['upsen_invoices_received'] = 'invoicesReceived';
+    mapping['upsen_invoices_received_' + userId] = 'invoicesReceived';
+    mapping['upsen_budgets'] = 'budgets';
+    mapping['upsen_budgets_' + userId] = 'budgets';
+    return mapping;
   }
   
   // Executar migracao completa

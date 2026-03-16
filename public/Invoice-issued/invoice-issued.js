@@ -174,59 +174,89 @@ function updateInvoiceIssued(id, updates) {
 async function renderSummaryCards() {
   var list = getAllInvoicesIssued();
   var now = new Date();
-  var pendingTotal = 0;
-  var overdueTotal = 0;
-  var monthlyCount = 0;
-  var totalAmount = 0;
+  var pendingTotal = 0, overdueTotal = 0, monthlyCount = 0, totalAmount = 0;
+  var paymentTotals = {
+    efectivo: 0, tarjeta: 0, transferencia: 0, recibo: 0, cheque: 0, paypal: 0
+  };
   
   for (var i = 0; i < list.length; i++) {
     var inv = list[i];
     var amount = Number(inv.amount || 0);
     totalAmount += amount;
     
-    if (inv.state === 'Pendiente') {
-      pendingTotal += amount;
-    }
-    
+    // Existing stats
+    if (inv.state === 'Pendiente') pendingTotal += amount;
     if (inv.dueDate && inv.state === 'Pendiente') {
       var dueDate = new Date(inv.dueDate);
-      if (dueDate < now) {
-        overdueTotal += amount;
-      }
+      if (dueDate < now) overdueTotal += amount;
     }
-    
     if (inv.invoiceDate) {
       var parts = inv.invoiceDate.split('-');
       if (parts.length >= 2) {
         var year = parseInt(parts[0]);
         var month = parseInt(parts[1]) - 1;
-        if (year === now.getFullYear() && month === now.getMonth()) {
-          monthlyCount++;
-        }
+        if (year === now.getFullYear() && month === now.getMonth()) monthlyCount++;
       }
+    }
+    
+    // NEW: Payment method totals (only paid invoices)
+    if (inv.state === 'Pagada' && inv.paymentMethod && paymentTotals[inv.paymentMethod]) {
+      paymentTotals[inv.paymentMethod] += amount;
     }
   }
   
   var avgAmount = list.length > 0 ? totalAmount / list.length : 0;
   
+  // Update existing cards
   if ($('pendingTotal')) $('pendingTotal').textContent = moneyEUR(pendingTotal);
   if ($('overdueTotal')) $('overdueTotal').textContent = moneyEUR(overdueTotal);
   if ($('monthlyCount')) {
-    var monthlyCountSpan = $('monthlyCount').querySelector('span');
-    if (monthlyCountSpan) {
-      monthlyCountSpan.textContent = monthlyCount + ' facturas';
-    } else {
-      $('monthlyCount').textContent = monthlyCount + ' facturas';
-    }
+    var mcSpan = $('monthlyCount').querySelector('span');
+    if (mcSpan) mcSpan.textContent = monthlyCount;
+    else $('monthlyCount').textContent = monthlyCount + ' facturas';
   }
   if ($('averageAmount')) {
-    var avgAmountSpan = $('averageAmount').querySelector('span');
-    if (avgAmountSpan) {
-      avgAmountSpan.textContent = moneyEUR(avgAmount);
-    } else {
-      $('averageAmount').textContent = moneyEUR(avgAmount);
-    }
+    var avgSpan = $('averageAmount').querySelector('span');
+    if (avgSpan) avgSpan.textContent = moneyEUR(avgAmount);
+    else $('averageAmount').textContent = moneyEUR(avgAmount);
   }
+  
+}
+
+function renderPaymentSummaryCards(totals) {
+  var container = $('paymentSummaryContainer');
+  if (!container) return;
+  
+  var methods = [
+    {key: 'efectivo', icon: '💵', label: 'Efectivo'},
+    {key: 'tarjeta', icon: '💳', label: 'Tarjeta'},
+    {key: 'transferencia', icon: '🏦', label: 'Transferencia'},
+    {key: 'recibo', icon: '📄', label: 'Recibo'},
+    {key: 'cheque', icon: '✉️', label: 'Cheque'},
+    {key: 'paypal', icon: '💸', label: 'Paypal'}
+  ];
+  
+  var html = '';
+  methods.forEach(function(method) {
+    var amount = moneyEUR(totals[method.key]);
+    html += '<div class="col-md-2 mb-3">' +
+      '<div class="summary-card">' +
+        '<div class="summary-icon">' + method.icon + '</div>' +
+        '<h3>' + method.label + '</h3>' +
+        '<p>' + amount + '</p>' +
+      '</div>' +
+    '</div>';
+  });
+  
+  container.innerHTML = html;
+  
+  // Update totals in existing cards
+  document.querySelectorAll('[id$="Total"]').forEach(function(el) {
+    var method = el.id.replace('Total', '').toLowerCase();
+    if (totals[method]) {
+      el.textContent = moneyEUR(totals[method]);
+    }
+  });
 }
 
 async function renderChart() {
@@ -284,15 +314,89 @@ async function renderChart() {
   });
 }
 
+// ========== VERIFICAR STATUS VERI*FACTU ==========
+function getVeriFactuStatus(invoice) {
+  // Se VeriFactuIntegration disponível, usar
+  if (window.VeriFactuIntegration && window.VeriFactuIntegration.getInvoiceStatus) {
+    return window.VeriFactuIntegration.getInvoiceStatus(invoice);
+  }
+  
+  // Fallback: verificar campos diretamente
+  if (!invoice) {
+    return { registered: false, status: 'no_data', hashPreview: '---------', icon: 'fa-minus', iconClass: 'text-muted' };
+  }
+  
+  var registered = invoice.verifactuRegistered === true || invoice.verifactuRegistered === 'true';
+  var status = invoice.verifactuStatus || 'draft';
+  
+  if (registered && status === 'registered') {
+    var hashPreview = invoice.verifactuHash ? invoice.verifactuHash.substring(0, 8) + '...' : '---------';
+    return {
+      registered: true,
+      status: 'registered',
+      hashPreview: hashPreview,
+      fullHash: invoice.verifactuHash,
+      timestamp: invoice.verifactuTimestamp,
+      icon: 'fa-check-circle',
+      iconClass: 'text-success'
+    };
+  } else if (status === 'error') {
+    return { registered: false, status: 'error', hashPreview: '---------', icon: 'fa-exclamation-triangle', iconClass: 'text-danger' };
+  } else {
+    return { registered: false, status: 'draft', hashPreview: '---------', icon: 'fa-edit', iconClass: 'text-muted' };
+  }
+}
+
 async function renderInvoices() {
   var tbody = $('invoiceTbody');
   if (!tbody) return;
 
   var list = getAllInvoicesIssued();
+  
+  // Apply filters
+  if (window.paymentFilter && window.paymentFilter !== 'todas') {
+    list = list.filter(inv => inv.paymentMethod === window.paymentFilter);
+  }
+  if (window.dateFilter === 'mes') {
+    var now = new Date();
+    var year = now.getFullYear();
+    var month = now.getMonth();
+    list = list.filter(inv => {
+      if (!inv.invoiceDate) return false;
+      var parts = inv.invoiceDate.split('-');
+      return parseInt(parts[0]) === year && parseInt(parts[1]) - 1 === month;
+    });
+  } else if (window.dateFilter === 'trimestre') {
+    var now = new Date();
+    var year = now.getFullYear();
+    var quarterMonth = Math.floor(now.getMonth() / 3) * 3;
+    list = list.filter(inv => {
+      if (!inv.invoiceDate) return false;
+      var parts = inv.invoiceDate.split('-');
+      var invMonth = parseInt(parts[1]) - 1;
+      return parseInt(parts[0]) === year && Math.floor(invMonth / 3) === Math.floor(quarterMonth / 3);
+    });
+  } else if (window.dateFilter === 'ano') {
+    var now = new Date();
+    var year = now.getFullYear();
+    list = list.filter(inv => {
+      if (!inv.invoiceDate) return false;
+      return parseInt(inv.invoiceDate.split('-')[0]) === year;
+    });
+  }
+  if (window.searchTerm) {
+    var term = window.searchTerm.toLowerCase();
+    list = list.filter(inv => 
+      (inv.invoiceNumber || '').toLowerCase().includes(term) ||
+      (inv.customer || '').toLowerCase().includes(term) ||
+      (inv.paymentNotes || '').toLowerCase().includes(term)
+    );
+  }
+  
   tbody.innerHTML = '';
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">No hay facturas emitidas.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="11" class="text-center text-muted">No hay facturas que coincidan con los filtros.</td></tr>';
     return;
   }
 
@@ -309,6 +413,12 @@ async function renderInvoices() {
       statusText = 'Vencida';
     }
     
+    // Veri*Factu status
+    var vfStatus = getVeriFactuStatus(inv);
+    var vfIcon = vfStatus.icon || 'fa-minus';
+    var vfClass = vfStatus.iconClass || 'text-muted';
+    var vfTitle = vfStatus.registered ? 'Hash: ' + (vfStatus.fullHash || 'N/A') + '\nRegistrado: ' + (vfStatus.timestamp || 'N/A') : 'Estado: ' + vfStatus.status;
+    
     var ivaDisplay = inv.ivaRate > 0 ? inv.ivaRate + '%' : '-';
     var tr = document.createElement('tr');
     tr.innerHTML = '<td>' + (inv.invoiceNumber || '-') + '</td>' +
@@ -319,7 +429,9 @@ async function renderInvoices() {
       '<td>' + ivaDisplay + '</td>' +
       '<td>' + moneyEUR(inv.ivaAmount || 0) + '</td>' +
       '<td>' + moneyEUR(inv.totalAmount || inv.amount) + '</td>' +
+'<td><i class="fas ' + vfIcon + ' ' + vfClass + '" title="' + vfTitle + '"></i> <small class="text-muted">' + vfStatus.hashPreview + '</small></td>' +
       '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
+      '<td>' + getPaymentMethodText(inv.paymentMethod) + (inv.paymentDate ? '<br><small>' + formatDate(inv.paymentDate) + '</small>' : '') + '</td>' +
       '<td class="action-buttons">' +
         '<button class="btn btn-primary btn-sm py-1 px-2 me-1" style="font-size:0.75rem" data-view="' + inv.id + '"><i class="fas fa-eye"></i></button>' +
         '<button class="btn btn-success btn-sm py-1 px-2 me-1" style="font-size:0.75rem" data-paid="' + inv.id + '"><i class="fas fa-check"></i></button>' +
@@ -342,7 +454,50 @@ async function renderInvoices() {
   for (var k = 0; k < paidBtns.length; k++) {
     paidBtns[k].addEventListener('click', function() {
       var id = this.getAttribute('data-paid');
-      updateInvoiceIssued(id, { state: 'Pagada' });
+      $('#markPaidInvoiceId').value = id;
+      $('formMarkPaid [name="paymentDate"]').value = new Date().toISOString().split('T')[0];
+      var modal = new bootstrap.Modal(document.getElementById('modalMarkPaid'));
+      modal.show();
+    });
+  }
+
+// Confirmar pagamento - MELHORADO
+  var confirmBtn = document.getElementById('confirmMarkPaid');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', function() {
+      var form = document.getElementById('formMarkPaid');
+      var paymentMethod = form.querySelector('[name="paymentMethod"]').value;
+      var paymentDate = form.querySelector('[name="paymentDate"]').value;
+      var paymentNotes = form.querySelector('[name="paymentNotes"]').value;
+      
+      if (!paymentMethod) {
+        alert('Por favor, selecciona el método de pago.');
+        return;
+      }
+      if (!paymentDate) {
+        alert('Por favor, selecciona la fecha de pago.');
+        return;
+      }
+      
+      var formData = {
+        state: 'Pagada',
+        paymentMethod: paymentMethod,
+        paymentDate: paymentDate,
+        paymentNotes: paymentNotes
+      };
+      var invoiceId = $('#markPaidInvoiceId').value;
+      
+      updateInvoiceIssued(invoiceId, formData);
+      
+      var modal = bootstrap.Modal.getInstance(document.getElementById('modalMarkPaid'));
+      modal.hide();
+      form.reset();
+      // Auto-reload
+      setTimeout(renderInvoices, 300);
+      setTimeout(renderSummaryCards, 300);
+      
+      // Dispatch sync event
+      window.dispatchEvent(new CustomEvent('dataUpdated-invoicesIssued', { detail: { id: invoiceId, updates: formData } }));
     });
   }
 
@@ -395,7 +550,79 @@ window.viewInvoice = function(id) {
 };
 
 // ========== GUARDAR FACTURA DO FORM ==========
-function saveInvoiceIssued() {
+/**
+ * Gerar campos Veri*Factu por defeito para fallback
+ */
+function computeFallbackVeriFactuFields(invoiceData) {
+  return {
+    series: 'A',
+    verifactuHash: 'FALHOU_CALCULO',
+    previousHash: '',
+    verifactuTimestamp: new Date().toISOString(),
+    verifactuRegistered: false,
+    verifactuStatus: 'fallback'
+  };
+}
+
+/**
+ * Verificar status Veri*Factu com suporte a fallback
+ */
+function getPaymentMethodText(method) {
+  const methods = {
+    'efectivo': 'Efectivo',
+    'tarjeta': 'Tarjeta', 
+    'transferencia': 'Transferencia',
+    'recibo': 'Recibo bancario',
+    'cheque': 'Cheque/Pagare',
+    'paypal': 'Paypal'
+  };
+  return methods[method] || method || '-';
+}
+
+function getVeriFactuStatus(invoice) {
+  if (window.VeriFactuIntegration && window.VeriFactuIntegration.getInvoiceStatus) {
+    return window.VeriFactuIntegration.getInvoiceStatus(invoice);
+  }
+  
+  if (!invoice) {
+    return { registered: false, status: 'no_data', hashPreview: '---------', icon: 'fa-minus', iconClass: 'text-muted' };
+  }
+  
+  var registered = invoice.verifactuRegistered === true || invoice.verifactuRegistered === 'true';
+  var status = invoice.verifactuStatus || 'draft';
+  
+  if (status === 'fallback') {
+    return {
+      registered: false,
+      status: 'fallback',
+      hashPreview: 'F',
+      fullHash: 'FALHOU_CALCULO',
+      timestamp: invoice.verifactuTimestamp,
+      icon: 'fa-exclamation-circle',
+      iconClass: 'text-warning',
+      title: 'Cálculo falhou - Fatura salva com fallback'
+    };
+  }
+  
+  if (registered && status === 'registered') {
+    var hashPreview = invoice.verifactuHash ? invoice.verifactuHash.substring(0, 8) + '...' : '---------';
+    return {
+      registered: true,
+      status: 'registered',
+      hashPreview: hashPreview,
+      fullHash: invoice.verifactuHash,
+      timestamp: invoice.verifactuTimestamp,
+      icon: 'fa-check-circle',
+      iconClass: 'text-success'
+    };
+  } else if (status === 'error') {
+    return { registered: false, status: 'error', hashPreview: 'ERR', icon: 'fa-exclamation-triangle', iconClass: 'text-danger' };
+  } else {
+    return { registered: false, status: 'draft', hashPreview: '---------', icon: 'fa-edit', iconClass: 'text-muted' };
+  }
+}
+
+async function saveInvoiceIssued() {
   var form = $('formNewInvoiceIssued');
   if (!form) return false;
 
@@ -426,7 +653,7 @@ function saveInvoiceIssued() {
     return false;
   }
 
-  addInvoiceIssued({
+  var invoiceData = {
     invoiceNumber: invoiceNumber,
     customer: customer,
     customerNif: customerNif,
@@ -434,8 +661,40 @@ function saveInvoiceIssued() {
     dueDate: dueDate,
     amount: amount,
     ivaRate: ivaRate || 0,
-    state: state
-  });
+    state: state,
+    paymentMethod: form.querySelector('[name="paymentMethod"]').value || null,
+    paymentDate: form.querySelector('[name="paymentDate"]').value || null
+  };
+
+  var verifactuSuccess = false;
+
+  // Tentar Veri*Factu Integration
+  if (window.VeriFactuIntegration && window.VeriFactuIntegration.createInvoiceIssued) {
+    try {
+      console.log('🔐 Criando fatura com Veri*Factu...');
+      await window.VeriFactuIntegration.createInvoiceIssued(invoiceData);
+      verifactuSuccess = true;
+      console.log('✅ Veri*Factu sucesso!');
+    } catch (err) {
+      console.warn('⚠️ Veri*Factu falhou:', err.message);
+      console.log('💾 Salvando com fallback fields...');
+      
+      // ADICIONAR campos fallback ANTES de chamar addInvoiceIssued
+      var fallbackFields = computeFallbackVeriFactuFields(invoiceData);
+      Object.assign(invoiceData, fallbackFields);
+      
+      addInvoiceIssued(invoiceData);
+      verifactuSuccess = false;
+    }
+  } else {
+    console.log('ℹ️ Veri*Factu não disponível, usando fallback');
+    
+    // ADICIONAR campos fallback
+    var fallbackFields = computeFallbackVeriFactuFields(invoiceData);
+    Object.assign(invoiceData, fallbackFields);
+    
+    addInvoiceIssued(invoiceData);
+  }
 
   // Close modal
   var modalEl = document.getElementById('modalNewInvoiceIssued');
@@ -480,8 +739,86 @@ function openNewInvoiceModal() {
 document.addEventListener('DOMContentLoaded', async function() {
   markActivePage();
   
-  // Inicializar referências do store.js
-  initStoreReferences();
+// Global filter state FIXED
+window.paymentFilter = 'todas';
+window.dateFilter = 'todos';
+window.searchTerm = '';
+
+window.clearFilters = function() {
+  window.paymentFilter = 'todas';
+  window.dateFilter = 'todos';
+  window.searchTerm = '';
+  if ($('paymentFilter')) $('paymentFilter').value = 'todas';
+  if ($('dateFilter')) $('dateFilter').value = 'todos';
+  if ($('searchInput')) $('searchInput').value = '';
+  renderInvoices();
+  renderSummaryCards();
+};
+
+window.applyFilters = function() {
+  renderInvoices();
+};
+
+window.initFilters = function() {
+  var paymentSelect = $('paymentFilter');
+  if (paymentSelect) {
+    paymentSelect.addEventListener('change', function() {
+      window.paymentFilter = this.value;
+      renderInvoices();
+    });
+  }
+  
+  var dateSelect = $('dateFilter');
+  if (dateSelect) {
+    dateSelect.addEventListener('change', function() {
+      window.dateFilter = this.value;
+      renderInvoices();
+    });
+  }
+  
+  var searchInput = $('searchInput');
+  if (searchInput) {
+    searchInput.addEventListener('input', function() {
+      window.searchTerm = this.value;
+      renderInvoices();
+    });
+  }
+};
+
+// Quarterly helpers for 2024-2026
+window.getQuarterlyTotals = function() {
+  var list = getAllInvoicesIssued();
+  var quarters = {};
+  list.forEach(function(inv) {
+    if (!inv.invoiceDate) return;
+    var date = new Date(inv.invoiceDate);
+    var year = date.getFullYear();
+    var q = Math.floor(date.getMonth() / 3) + 1;
+    if (year >= 2024 && year <= 2026) {
+      var key = year + '-Q' + q;
+      quarters[key] = (quarters[key] || 0) + Number(inv.totalAmount || inv.amount || 0);
+    }
+  });
+  return quarters;
+};
+
+// Annual helpers for 2020-2024
+window.getAnnualTotals = function() {
+  var list = getAllInvoicesIssued();
+  var years = {};
+  list.forEach(function(inv) {
+    if (!inv.invoiceDate) return;
+    var date = new Date(inv.invoiceDate);
+    var year = date.getFullYear();
+    if (year >= 2020 && year <= 2024) {
+      years[year] = (years[year] || 0) + Number(inv.totalAmount || inv.amount || 0);
+    }
+  });
+  return years;
+};
+
+// Inicializar referências do store.js
+initStoreReferences();
   
   function checkAndInit() {
     if (window.getInvoicesIssuedSync) {
@@ -511,6 +848,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         saveInvoiceIssued();
       });
     }
+    
+    // Initialize filters
+    window.initFilters();
+
     
     var refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) {

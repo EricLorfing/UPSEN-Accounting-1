@@ -145,14 +145,33 @@ async function addInvoiceReceived(invoice) {
     list = [];
   }
 
-  const item = {
+  // Campos Veri*Factu
+  const verifactuFields = {
+    series: invoice.series ?? "R",
+    supplierNif: invoice.supplierNif ?? "",
+    verifactuHash: invoice.verifactuHash ?? "",
+    previousHash: invoice.previousHash ?? "",
+    verifactuTimestamp: invoice.verifactuTimestamp ?? "",
+    verifactuRegistered: invoice.verifactuRegistered ?? false,
+    verifactuStatus: invoice.verifactuStatus ?? "draft"
+  };
+
+const item = {
     id: uid(),
     invoiceNumber: invoice.invoiceNumber ?? "",
     invoiceDate: invoice.invoiceDate ?? "",
     supplier: invoice.supplier ?? "",
+    supplierNif: invoice.supplierNif ?? "",
     amount: Number(invoice.amount ?? 0),
+    ivaRate: Number(invoice.ivaRate ?? 0),
+    ivaAmount: Number(invoice.ivaAmount ?? 0),
+    totalAmount: Number(invoice.totalAmount ?? 0),
     state: invoice.state ?? "Pendiente",
+    description: invoice.description ?? "",
+    paymentMethod: invoice.paymentMethod ?? null,  // efectivo|tarjeta|transferencia|recibo|cheque|paypal  
+    paymentDate: invoice.paymentDate ?? null,     // YYYY-MM-DD
     createdAt: new Date().toISOString(),
+    ...verifactuFields
   };
   
   list.push(item);
@@ -204,15 +223,32 @@ async function addInvoiceIssued(invoice) {
     list = [];
   }
 
-  const item = {
+  // Campos Veri*Factu
+  const verifactuFields = {
+    series: invoice.series ?? "A",
+    verifactuHash: invoice.verifactuHash ?? "",
+    previousHash: invoice.previousHash ?? "",
+    verifactuTimestamp: invoice.verifactuTimestamp ?? "",
+    verifactuRegistered: invoice.verifactuRegistered ?? false,
+    verifactuStatus: invoice.verifactuStatus ?? "draft" // draft, registered, error
+  };
+
+const item = {
     id: uid(),
     invoiceNumber: invoice.invoiceNumber ?? "",
     customer: invoice.customer ?? "",
+    customerNif: invoice.customerNif ?? "",
     invoiceDate: invoice.invoiceDate ?? "",
     dueDate: invoice.dueDate ?? "",
     amount: Number(invoice.amount ?? 0),
+    ivaRate: Number(invoice.ivaRate ?? 0),
+    ivaAmount: Number(invoice.ivaAmount ?? 0),
+    totalAmount: Number(invoice.totalAmount ?? 0),
     state: invoice.state ?? "Pendiente",
+    paymentMethod: invoice.paymentMethod ?? null,  // efectivo|tarjeta|transferencia|recibo|cheque|paypal
+    paymentDate: invoice.paymentDate ?? null,     // YYYY-MM-DD
     createdAt: new Date().toISOString(),
+    ...verifactuFields
   };
   
   list.push(item);
@@ -243,6 +279,48 @@ async function deleteInvoiceIssued(id) {
       console.warn('[Store] Erro ao remover invoice issued do Firebase:', e);
     }
   }
+}
+
+// Função para atualizar fatura emitida (usada pelo Veri*Factu)
+async function updateInvoiceIssued(id, updates) {
+  let list = getInvoicesIssuedSync();
+  const index = list.findIndex((x) => x.id === id);
+  if (index !== -1) {
+    list[index] = { ...list[index], ...updates };
+    write(KEYS.invoicesIssued, list);
+    
+    // Atualizar no Firebase se disponível
+    if (isFirebaseReady()) {
+      try {
+        await window.FirebaseSync.updateInFirebaseAndLocalStorage('invoicesIssued', id, updates);
+      } catch (e) {
+        console.warn('[Store] Erro ao atualizar invoice issued no Firebase:', e);
+      }
+    }
+    return list[index];
+  }
+  return null;
+}
+
+// Função para atualizar fatura recebida (usada pelo Veri*Factu)
+async function updateInvoiceReceived(id, updates) {
+  let list = getInvoicesReceivedSync();
+  const index = list.findIndex((x) => x.id === id);
+  if (index !== -1) {
+    list[index] = { ...list[index], ...updates };
+    write(KEYS.invoicesReceived, list);
+    
+    // Atualizar no Firebase se disponível
+    if (isFirebaseReady()) {
+      try {
+        await window.FirebaseSync.updateInFirebaseAndLocalStorage('invoicesReceived', id, updates);
+      } catch (e) {
+        console.warn('[Store] Erro ao atualizar invoice received no Firebase:', e);
+      }
+    }
+    return list[index];
+  }
+  return null;
 }
 
 // ======================================================
@@ -566,6 +644,8 @@ window.getInvoicesIssued = getInvoicesIssued;
 window.addInvoiceIssued = addInvoiceIssued;
 window.deleteInvoiceIssued = deleteInvoiceIssued;
 window.getInvoicesIssuedSync = getInvoicesIssuedSync;
+window.updateInvoiceIssued = updateInvoiceIssued;
+window.updateInvoiceReceived = updateInvoiceReceived;
 
 window.getExpenses = getExpenses;
 window.addExpense = addExpense;
@@ -597,6 +677,7 @@ window.resetAll = resetAll;
 // Funções auxiliares
 window.isFirebaseReady = isFirebaseReady;
 window.getFirebaseUserId = getFirebaseUserId;
+window.getUserId = getCurrentUserId;
 
 // ========== REALTIME SYNC LISTENERS ==========
 // Escuta eventos do Firebase Sync e recarrega os dados automaticamente

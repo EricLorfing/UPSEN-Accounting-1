@@ -7,7 +7,7 @@ window.confirmLogout = function() {
   if (confirm('¿Cerrar sesión?')) {
     // 1. Limpar localStorage primeiro
     localStorage.removeItem('upsen_current_user');
-    
+      
     // 2. Also try to sign out from Firebase
     if (window.firebaseAuth) {
       window.firebaseAuth.signOut().then(function() {
@@ -125,8 +125,10 @@ function getUserInvoicesReceived() {
     } catch (e) {}
   }
 
-  // REMOVED: Fallback that was loading data from other users
-  // Each user now has isolated data
+  // Firebase store fallback
+  if (window.getInvoicesReceivedSync) {
+    return window.getInvoicesReceivedSync();
+  }
 
   return [];
 }
@@ -193,9 +195,10 @@ function saveInvoiceReceivedToFirebase(invoice) {
   }
   
   console.log('Salvando no Firebase...');
-  console.log('Path: users/' + userId + '/documents/invoicesReceived/items');
+  console.log('Path: companies/' + userId + '/invoicesReceived');
   
-  window.firebaseDb.collection('users').doc(userId).collection('documents').doc('invoicesReceived').collection('items').add({
+  // Use the CORRECT path: companies/{uid}/invoicesReceived (matching the rest of the app)
+  window.firebaseDb.collection('companies').doc(userId).collection('invoicesReceived').add({
     id: invoice.id,
     invoiceNumber: invoice.invoiceNumber,
     supplier: invoice.supplier,
@@ -231,10 +234,11 @@ function deleteInvoiceReceived(id) {
 
 function deleteInvoiceReceivedFromFirebase(id) {
   var userId = getUserId();
-  if (!userId || userId === 'unknown') return;
+  if (!userId || userId === 'unknown' || userId === 'demo') return;
   if (!window.firebaseDb) return;
   
-  window.firebaseDb.collection('users').doc(userId).collection('documents').doc('invoicesReceived').collection('items')
+  // Use the CORRECT path: companies/{uid}/invoicesReceived (matching the rest of the app)
+  window.firebaseDb.collection('companies').doc(userId).collection('invoicesReceived')
     .where('id', '==', id)
     .get()
     .then(function(snapshot) {
@@ -266,6 +270,42 @@ async function renderSummaryCards() {
   var paidTotal = 0;
   var monthlyTotal = 0;
   var overdueCount = 0;
+  
+  for (var i = 0; i < list.length; i++) {
+    var inv = list[i];
+    var amount = Number(inv.amount || 0);
+    
+    if (inv.state === 'Pendiente') {
+      pendingTotal += amount;
+      
+      if (inv.invoiceDate) {
+        var invoiceDate = new Date(inv.invoiceDate);
+        var dueDate = new Date(invoiceDate);
+        dueDate.setDate(dueDate.getDate() + 30);
+        if (dueDate < now) {
+          overdueCount++;
+        }
+      }
+    } else if (inv.state === 'Pagada') {
+      paidTotal += amount;
+    }
+    
+    if (inv.invoiceDate) {
+      var parts = inv.invoiceDate.split('-');
+      if (parts.length >= 2) {
+        var year = parseInt(parts[0]);
+        var month = parseInt(parts[1]) - 1;
+        if (year === now.getFullYear() && month === now.getMonth()) {
+          monthlyTotal += amount;
+        }
+      }
+    }
+  }
+  
+  if ($('pendingTotal')) $('pendingTotal').textContent = moneyEUR(pendingTotal);
+  if ($('paidTotal')) $('paidTotal').textContent = moneyEUR(paidTotal);
+  if ($('monthlyTotal')) $('monthlyTotal').textContent = moneyEUR(monthlyTotal);
+  if ($('overdueCount')) $('overdueCount').textContent = overdueCount;
   
   for (var i = 0; i < list.length; i++) {
     var inv = list[i];
@@ -345,10 +385,51 @@ async function renderInvoices() {
   if (!tbody) return;
 
   var list = getAllInvoicesReceived();
+  
+  // Apply filters - NEW
+  if (window.paymentFilter && window.paymentFilter !== 'todas') {
+    list = list.filter(inv => inv.paymentMethod === window.paymentFilter);
+  }
+  if (window.dateFilter === 'mes') {
+    var now = new Date();
+    var year = now.getFullYear();
+    var month = now.getMonth();
+    list = list.filter(inv => {
+      if (!inv.invoiceDate) return false;
+      var parts = inv.invoiceDate.split('-');
+      return parseInt(parts[0]) === year && parseInt(parts[1]) - 1 === month;
+    });
+  } else if (window.dateFilter === 'trimestre') {
+    var now = new Date();
+    var year = now.getFullYear();
+    var quarterMonth = Math.floor(now.getMonth() / 3) * 3;
+    list = list.filter(inv => {
+      if (!inv.invoiceDate) return false;
+      var parts = inv.invoiceDate.split('-');
+      var invMonth = parseInt(parts[1]) - 1;
+      return parseInt(parts[0]) === year && Math.floor(invMonth / 3) === Math.floor(quarterMonth / 3);
+    });
+  } else if (window.dateFilter === 'ano') {
+    var now = new Date();
+    var year = now.getFullYear();
+    list = list.filter(inv => {
+      if (!inv.invoiceDate) return false;
+      return parseInt(inv.invoiceDate.split('-')[0]) === year;
+    });
+  }
+  if (window.searchTerm) {
+    var term = window.searchTerm.toLowerCase();
+    list = list.filter(inv => 
+      (inv.invoiceNumber || '').toLowerCase().includes(term) ||
+      (inv.supplier || '').toLowerCase().includes(term) ||
+      (inv.paymentNotes || '').toLowerCase().includes(term)
+    );
+  }
+  
   tbody.innerHTML = '';
 
   if (!list.length) {
-    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">No hay facturas recibidas.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" class="text-center text-muted">No hay facturas que coincidan con los filtros.</td></tr>';
     return;
   }
 
@@ -366,6 +447,16 @@ async function renderInvoices() {
     }
     
     var ivaDisplay = inv.ivaRate > 0 ? inv.ivaRate + '%' : '-';
+    
+    // Veri*Factu status
+    var vfStatus = { registered: false, status: 'draft', hashPreview: '---------', icon: 'fa-minus', iconClass: 'text-muted' };
+    if (window.VeriFactuIntegration && window.VeriFactuIntegration.getInvoiceStatus) {
+      vfStatus = window.VeriFactuIntegration.getInvoiceStatus(inv);
+    }
+    var vfIcon = vfStatus.icon || 'fa-minus';
+    var vfClass = vfStatus.iconClass || 'text-muted';
+    var vfTitle = vfStatus.registered ? 'Hash: ' + (vfStatus.fullHash || 'N/A') + '\nRegistrado: ' + (vfStatus.timestamp || 'N/A') : 'Estado: ' + vfStatus.status;
+    
     var tr = document.createElement('tr');
     tr.innerHTML = '<td>' + (inv.invoiceNumber || '-') + '</td>' +
       '<td>' + (inv.supplier || '-') + '</td>' +
@@ -373,6 +464,7 @@ async function renderInvoices() {
       '<td>' + moneyEUR(inv.amount) + '</td>' +
       '<td>' + ivaDisplay + '</td>' +
       '<td>' + moneyEUR(inv.ivaAmount || 0) + '</td>' +
+      '<td><i class="fas ' + vfIcon + ' ' + vfClass + '" title="' + vfTitle + '"></i> <small class="text-muted">' + vfStatus.hashPreview + '</small></td>' +
       '<td>' + moneyEUR(inv.totalAmount || inv.amount) + '</td>' +
       '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
       '<td class="action-buttons">' +
@@ -395,14 +487,55 @@ async function renderInvoices() {
       }
     });
   }
-
+  
   var paidBtns = tbody.querySelectorAll('[data-paid]');
   for (var k = 0; k < paidBtns.length; k++) {
     paidBtns[k].addEventListener('click', function() {
       var id = this.getAttribute('data-paid');
-      updateInvoiceReceived(id, { state: 'Pagada' });
-      renderInvoices();
-      renderSummaryCards();
+      $('#markPaidInvoiceId').value = id;
+      $('formMarkPaid [name="paymentDate"]').value = new Date().toISOString().split('T')[0];
+      var modal = new bootstrap.Modal(document.getElementById('modalMarkPaid'));
+      modal.show();
+    });
+  }
+
+  // Confirm payment - NEW
+  var confirmBtn = document.getElementById('confirmMarkPaid');
+  if (confirmBtn) {
+    confirmBtn.replaceWith(confirmBtn.cloneNode(true)); // Clear previous listeners
+    confirmBtn = document.getElementById('confirmMarkPaid');
+    confirmBtn.addEventListener('click', function() {
+      var form = document.getElementById('formMarkPaid');
+      var paymentMethod = form.querySelector('[name="paymentMethod"]').value;
+      var paymentDate = form.querySelector('[name="paymentDate"]').value;
+      var paymentNotes = form.querySelector('[name="paymentNotes"]').value;
+      
+      if (!paymentMethod) {
+        alert('Por favor, selecciona el método de pago.');
+        return;
+      }
+      if (!paymentDate) {
+        alert('Por favor, selecciona la fecha de pago.');
+        return;
+      }
+      
+      var formData = {
+        state: 'Pagada',
+        paymentMethod: paymentMethod,
+        paymentDate: paymentDate,
+        paymentNotes: paymentNotes
+      };
+      var invoiceId = $('#markPaidInvoiceId').value;
+      
+      updateInvoiceReceived(invoiceId, formData);
+      
+      var modal = bootstrap.Modal.getInstance(document.getElementById('modalMarkPaid'));
+      modal.hide();
+      form.reset();
+      setTimeout(renderInvoices, 300);
+      setTimeout(renderSummaryCards, 300);
+      
+      window.dispatchEvent(new CustomEvent('dataUpdated-invoicesReceived', { detail: { id: invoiceId, updates: formData } }));
     });
   }
 
@@ -481,15 +614,40 @@ function saveInvoiceReceived() {
     return false;
   }
 
-  addInvoiceReceived({
+  var invoiceData = {
     invoiceNumber: invoiceNumber,
     supplier: supplier,
     supplierNif: supplierNif,
     invoiceDate: invoiceDate,
     amount: amount,
     ivaRate: ivaRate || 0,
-    state: state
-  });
+    state: state,
+    paymentMethod: paymentMethod || null,
+    paymentDate: paymentDate
+  };
+
+  // Usar Veri*Factu Integration se disponível
+  if (window.VeriFactuIntegration && window.VeriFactuIntegration.createInvoiceReceived) {
+    console.log('A criar fatura recebida com Veri*Factu...');
+    window.VeriFactuIntegration.createInvoiceReceived(invoiceData).then(function() {
+      renderInvoices();
+      renderChart();
+      renderSummaryCards();
+    }).catch(function(err) {
+      console.error('Erro no registo Veri*Factu:', err);
+      // Se falhar o hash, ainda cria a fatura normalmente
+      addInvoiceReceived(invoiceData);
+      renderInvoices();
+      renderChart();
+      renderSummaryCards();
+    });
+  } else {
+    // Fallback: usar função normal
+    addInvoiceReceived(invoiceData);
+    renderInvoices();
+    renderChart();
+    renderSummaryCards();
+  }
 
   var modalEl = document.getElementById('modalNewInvoiceReceived');
   if (modalEl) {
@@ -502,9 +660,6 @@ function saveInvoiceReceived() {
   }
 
   form.reset();
-  renderInvoices();
-  renderChart();
-  renderSummaryCards();
   return true;
 }
 
@@ -529,6 +684,11 @@ function openNewInvoiceModal() {
 
 document.addEventListener('DOMContentLoaded', async function() {
   markActivePage();
+  
+  // Global filter state - RESET ✓
+  window.paymentFilter = 'todas';
+  window.dateFilter = 'todos';
+  window.searchTerm = '';
   
   // Wait for auth to be ready before loading data
   window.waitForAuth(function() {
@@ -683,6 +843,82 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
     }
     
+    // FILTER BUTTON ✓
+    const paymentSelect = $('paymentFilter');
+    const dateSelect = $('dateFilter');
+    const searchInput = $('searchInput');
+    
+    // RESET DOM values ✓
+    if (paymentSelect) paymentSelect.value = 'todas';
+    if (dateSelect) dateSelect.value = 'todos';
+    if (searchInput) searchInput.value = '';
+    
+    // Filter events
+    if (paymentSelect) {
+      paymentSelect.addEventListener('change', function() {
+        window.paymentFilter = this.value;
+        renderInvoices();
+      });
+    }
+    
+    if (dateSelect) {
+      dateSelect.addEventListener('change', function() {
+        window.dateFilter = this.value;
+        renderInvoices();
+      });
+    }
+    
+    if (searchInput) {
+      searchInput.addEventListener('input', function() {
+        window.searchTerm = this.value;
+        renderInvoices();
+      });
+    }
+    
+    // Verify Integrity Button
+    var verifyBtn = document.getElementById('btnVerifyIntegrity');
+    if (verifyBtn) {
+      verifyBtn.addEventListener('click', async function() {
+        console.log('Verificando integridad de la cadena Veri*Factu...');
+        
+        if (!window.VeriFactuLedger) {
+          alert('Veri*Factu Ledger no está disponível');
+          return;
+        }
+        
+        try {
+          var issues = await window.VeriFactuLedger.verifyIntegrity();
+          var stats = window.VeriFactuLedger.getStats();
+          
+          if (issues.length === 0) {
+            var message = '✅ INTEGRIDADE VERIFICADA\n\n';
+            message += 'Total de entradas no registro: ' + stats.totalEntries + '\n';
+            message += 'Criadas: ' + stats.createCount + '\n';
+            message += 'Modificadas: ' + stats.modifyCount + '\n';
+            message += 'Canceladas: ' + stats.cancelCount + '\n\n';
+            message += 'A cadeia de hashes está intacta!';
+            
+            alert(message);
+          } else {
+            var errorMsg = '⚠️ PROBLEMAS ENCONTRADOS\n\n';
+            errorMsg += 'Total de entradas: ' + stats.totalEntries + '\n';
+            errorMsg += 'Problemas: ' + issues.length + '\n\n';
+            
+            issues.forEach(function(issue, idx) {
+              errorMsg += (idx + 1) + '. ' + issue.message + '\n';
+              errorMsg += '   Fatura: ' + issue.invoiceNumber + '\n';
+              errorMsg += '   ID: ' + issue.entryId + '\n\n';
+            });
+            
+            alert(errorMsg);
+          }
+        } catch (err) {
+          console.error('Erro ao verificar integridade:', err);
+          alert('Erro ao verificar integridade: ' + err.message);
+        }
+      });
+    }
+    
     renderInvoices();
     renderChart();
     renderSummaryCards();
@@ -765,12 +1001,12 @@ function clearFilters() {
     dateFrom: '',
     dateTo: ''
   };
-  
+
   var form = document.getElementById('filterForm');
   if (form) {
     form.reset();
   }
-  
+
   renderInvoices();
 }
 
