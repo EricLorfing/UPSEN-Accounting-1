@@ -699,36 +699,6 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// Confirm logout
-function confirmLogout() {
-  if (confirm('¿Cerrar sesion?')) {
-// Confirm logout - global function
-window.confirmLogout = function() {
-  if (confirm('¿Cerrar sesión?')) {
-    // 1. Limpar localStorage primeiro
-    localStorage.removeItem('upsen_current_user');
-    
-    // 2. Also try to sign out from Firebase
-    if (window.firebaseAuth) {
-      window.firebaseAuth.signOut().then(function() {
-        console.log('Firebase signed out');
-      }).catch(function(e) {
-        console.log('Firebase sign out error:', e);
-      });
-    }
-    
-    // 3. Also try AuthService logout
-    var auth = window.AuthService || window.Auth;
-    if (auth && auth.logout) {
-      auth.logout().then(function() {
-        window.location.href = '../login.html';
-      });
-    } else {
-      window.location.href = '../login.html';
-    }
-  }
-}
-};
-    </script>
+</script>
   </body>
 </html>

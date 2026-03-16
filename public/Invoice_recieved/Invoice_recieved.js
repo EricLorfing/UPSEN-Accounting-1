@@ -621,9 +621,7 @@ function saveInvoiceReceived() {
     invoiceDate: invoiceDate,
     amount: amount,
     ivaRate: ivaRate || 0,
-    state: state,
-    paymentMethod: paymentMethod || null,
-    paymentDate: paymentDate
+    state: state
   };
 
   // Usar Veri*Factu Integration se disponível
