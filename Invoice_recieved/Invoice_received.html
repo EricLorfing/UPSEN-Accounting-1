@@ -210,10 +210,43 @@
           <h2 class="card-header">Evolución de gastos</h2>
           <div class="chart-placeholder">
             Gráfico de facturas recibidas y pagos realizados
-          </div>
-        </div>
-      </main>
-    </div>
+
+
+
+
+
+
+
+
+
+
+
+            <!-- NEW INVOICE MODAL -->
+<div class="modal" id="modalNewInvoice">
+  <div class="modal-content" style="background:white; padding:20px;">
+    <h3>Nueva factura</h3>
+
+    <form id="formNewInvoice">
+
+      <label>Número</label>
+      <input type="text" name="invoiceNumber"><br><br>
+
+      <label>Fecha</label>
+      <input type="date" name="invoiceDate"><br><br>
+
+      <!-- 🔥 cliente-select -->
+      <label>Cliente</label>
+      <select name="clienteId" id="clienteSelect">
+        <option value="">Kunde auswählen</option>
+      </select><br><br>
+
+      <label>Importe</label>
+      <input type="number" name="amount"><br><br>
+
+      <button type="button" id="saveInvoiceBtn">Guardar</button>
+    </form>
   </div>
+</div>
+</main>
 </body>
 </html>
