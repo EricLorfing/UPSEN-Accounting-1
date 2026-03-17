@@ -20,10 +20,12 @@ btnNewInvoiceOCR.addEventListener('click', () => {
 document.getElementById('saveInvoiceBtn').addEventListener('click', () => {
   const form = document.getElementById('formNewInvoice');
   const formData = new FormData(form);
-  let inv = {};
-  formData.forEach((value, key) => {
+let inv = {};
+formData.forEach((value, key) => {
+  if (key !== 'supplier') {   
     inv[key] = value;
-  });
+  }
+});
   // store in localStorage
   let invoices = JSON.parse(localStorage.getItem('invoices') || '[]');
   invoices.push(inv);
@@ -90,7 +92,7 @@ function updateTable() {
       <td>${inv.invoiceNumber || ''}</td>
       <td>${inv.state || ''}</td>
       <td>${inv.invoiceDate || inv.date || ''}</td>
-      <td>${inv.supplier || ''}</td>
+      <td>${inv.clienteId || 'CLIENTE1'}</td>
       <td>${inv.amount || ''}</td>
     `;
     tbody.appendChild(tr);
